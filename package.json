@@ -1,0 +1,21 @@
+{
+  "name": "rockyweb",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rockyweb: Manifest V3 cookie consent, ad and tracker blocking extension (source in ./extension).",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build:rules": "node scripts/build-rules.mjs",
+    "build:icons": "node scripts/generate-icons.mjs",
+    "build": "npm run build:rules && npm run build:icons",
+    "verify": "node scripts/verify.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "node tests/e2e/run-e2e.mjs",
+    "check": "npm run verify && npm test",
+    "package": "node scripts/package.mjs",
+    "store:assets": "node scripts/store-assets.mjs"
+  }
+}

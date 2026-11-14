@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rockyweb</title>
+  <link rel="stylesheet" href="ui/tokens.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="top">
+      <div class="brand">
+        <img class="logo" src="icons/rocky.png" alt="" width="22" height="22">
+        <span>rockyweb</span>
+      </div>
+      <button class="tbtn" id="gear" type="button" aria-pressed="false" aria-label="Advanced settings" title="Advanced settings"></button>
+    </header>
+    <main id="main" class="view" aria-live="polite"></main>
+  </div>
+
+  <script src="shared/constants.js"></script>
+  <script src="shared/domain.js"></script>
+  <script src="ui/ui-kit.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

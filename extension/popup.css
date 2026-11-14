@@ -1,0 +1,73 @@
+html, body { width: 340px; }
+body { overflow-x: hidden; }
+
+.app { padding: 14px 16px 16px; }
+
+.top { display: flex; align-items: center; justify-content: space-between; height: 28px; }
+.brand { display: flex; align-items: center; gap: 8px; color: var(--text); font-weight: 500; letter-spacing: -0.01em; }
+.logo { border-radius: 5px; }
+#gear[aria-pressed="true"] { color: var(--main); }
+
+.view { display: flex; flex-direction: column; gap: 18px; padding-top: 18px; }
+
+/* ---------- main view */
+.site { display: flex; align-items: center; gap: 12px; }
+.site-text { flex: 1; min-width: 0; }
+.host { font-size: 20px; font-weight: 500; letter-spacing: -0.02em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.state { margin-top: 2px; font-size: 12.5px; color: var(--sub-dim); }
+.state b { font-weight: 400; color: var(--sub); }
+.state.paused b { color: var(--error); }
+
+.modes { display: flex; justify-content: center; }
+.modes .bar { width: 100%; justify-content: space-between; }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat-v { font-size: 28px; line-height: 1.1; font-weight: 500; color: var(--main); letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-v.word { font-size: 18px; line-height: 1.75; }
+.stat-v.none { color: var(--sub-dim); }
+.stat-l { font-size: 12px; color: var(--sub-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.foot { display: flex; align-items: center; justify-content: space-between; min-height: 22px; margin-top: -4px; font-size: 12px; }
+.reload { border: 0; background: none; padding: 0; color: var(--main); display: inline-flex; align-items: center; gap: 6px; }
+.reload svg { width: 13px; height: 13px; }
+.reload:hover { color: var(--text); }
+.total { color: var(--sub-dim); }
+
+/* ---------- advanced view */
+.section { display: flex; flex-direction: column; gap: 2px; }
+.section-t { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--sub-dim); margin-bottom: 6px; }
+.section-t .main { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; }
+.row-l { font-size: 13px; color: var(--text); white-space: nowrap; }
+.row.wide { flex-direction: column; align-items: stretch; gap: 6px; padding: 4px 0 6px; }
+.row.wide .bar { justify-content: space-between; }
+.row .bar { padding: 2px 3px; }
+.row .bar button { padding: 4px 7px; font-size: 12px; }
+.cats { display: inline-flex; gap: 2px; padding: 2px 3px; border-radius: var(--radius); background: var(--sub-alt); }
+.cats button { border: 0; background: none; padding: 4px 7px; border-radius: 6px; font-size: 12px; color: var(--sub-dim); }
+.cats button:hover { color: var(--text); }
+.cats button[aria-pressed="true"] { color: var(--main); }
+.note { font-size: 11.5px; color: var(--sub-dim); margin-top: 4px; }
+
+.domains { list-style: none; margin: 0; padding: 0; max-height: 210px; overflow-y: auto; }
+.domain { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.domain:first-child { border-top: 0; }
+.domain-text { flex: 1; min-width: 0; }
+.domain-name { font-size: 12.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.domain-meta { font-size: 11px; color: var(--sub-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.domain-meta .yours { color: var(--main); }
+.undo { border: 0; background: none; padding: 2px; color: var(--sub-dim); display: grid; place-items: center; }
+.undo:hover { color: var(--text); }
+.undo svg { width: 12px; height: 12px; }
+.empty { font-size: 12px; color: var(--sub-dim); padding: 4px 0; }
+
+.links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; }
+.links button { border: 0; background: none; padding: 0; color: var(--sub); display: inline-flex; align-items: center; gap: 6px; }
+.links button:hover { color: var(--text); }
+.links svg { width: 13px; height: 13px; }
+
+/* ---------- misc */
+.unsupported { padding: 22px 0 8px; text-align: center; }
+.unsupported .host { font-size: 16px; color: var(--sub-dim); }
+.unsupported p { margin: 6px 0 0; font-size: 12.5px; color: var(--sub-dim); }
+.error { font-size: 12.5px; color: var(--error); }

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rockyweb Settings</title>
+  <link rel="icon" href="icons/icon-32.png">
+  <link rel="stylesheet" href="ui/tokens.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="brand" href="#protection">
+        <img src="icons/rocky.png" alt="" width="36" height="36">
+        <span class="brand-text"><small>rocky sees</small>rockyweb</span>
+      </a>
+      <nav class="nav" id="nav" aria-label="Settings pages">
+        <a href="#protection">protection</a>
+        <a href="#cookies">cookies</a>
+        <a href="#custom">custom</a>
+        <a href="#websites">websites</a>
+        <a href="#trackers">trackers</a>
+        <a href="#hidden">hidden</a>
+        <a href="#data">data</a>
+      </nav>
+    </header>
+
+    <main class="content" id="content">
+      <section id="protection" class="section" hidden>
+        <h2>protection</h2>
+        <p class="lead">The default mode applies to every website that doesn't have its own. Change a single site from the toolbar popup.</p>
+        <div class="setting">
+          <div class="setting-text"><h3>default mode</h3><p id="tierDescription"></p></div>
+          <div class="setting-ctl" id="tierButtons"></div>
+        </div>
+        <dl class="facts" id="tierFacts"></dl>
+      </section>
+
+      <section id="cookies" class="section" hidden>
+        <h2>cookies</h2>
+        <p class="lead">Your answer to every cookie popup. Rockyweb uses the popup provider's own controls when it can, otherwise clicks the right buttons, then unlocks pages left unscrollable. Strict mode always rejects everything optional.</p>
+        <div id="consentRows"></div>
+      </section>
+
+      <section id="custom" class="section" hidden>
+        <h2>custom mode</h2>
+        <p class="lead">What the <span class="main">custom</span> default mode turns on. Changing one of these while another mode is the default makes custom the default, starting from that mode's settings.</p>
+        <div id="engineRows"></div>
+      </section>
+
+      <section id="websites" class="section" hidden>
+        <h2>websites</h2>
+        <p class="lead">Sites with their own mode, domain choices or hidden elements. A setting covers the whole domain, so <code>shop.example.com</code> uses <code>example.com</code>.</p>
+        <form class="tools" id="addSiteForm">
+          <input class="input" id="addSiteInput" placeholder="add a website, e.g. example.com" autocomplete="off" aria-label="Website to add" required>
+          <select class="select" id="addSiteTier" aria-label="Mode for the new website"></select>
+          <button class="btn" type="submit">add</button>
+        </form>
+        <div class="tools">
+          <input class="input grow" id="siteSearch" type="search" placeholder="search websites" autocomplete="off" aria-label="Search websites">
+        </div>
+        <div class="list" id="siteList"></div>
+      </section>
+
+      <section id="trackers" class="section" hidden>
+        <h2>trackers</h2>
+        <p class="lead">Third-party domains Rocky has sniffed out. One that follows you to <span class="main">3 or more</span> websites is learned: balanced strips its cookies and strict blocks it. Payment, login and captcha providers are never restricted automatically, and shared CDNs at most lose their cookies.</p>
+        <p class="summary" id="trackerSummary"></p>
+        <div class="tools">
+          <input class="input grow" id="trackerSearch" type="search" placeholder="search domains" autocomplete="off" aria-label="Search trackers">
+          <div id="trackerFilter"></div>
+        </div>
+        <div class="list" id="trackerList"></div>
+        <div class="setting danger-zone">
+          <div class="setting-text"><h3>reset learning</h3><p>Forget every learned tracker. Your own choices for individual domains are kept.</p></div>
+          <div class="setting-ctl"><button class="btn danger" id="resetLearned" type="button">reset</button></div>
+        </div>
+      </section>
+
+      <section id="hidden" class="section" hidden>
+        <h2>hidden elements</h2>
+        <p class="lead">Elements you hid with the picker (popup, gear, hide an element) or added here. They stay hidden on that site in every mode except off.</p>
+        <form class="tools" id="addSelectorForm">
+          <input class="input" id="selSiteInput" placeholder="example.com" autocomplete="off" aria-label="Website" required>
+          <input class="input grow mono" id="selInput" placeholder="css selector, e.g. .promo-banner" autocomplete="off" aria-label="CSS selector" required>
+          <button class="btn" type="submit">hide</button>
+        </form>
+        <div class="list" id="hiddenList"></div>
+      </section>
+
+      <section id="data" class="section" hidden>
+        <h2>data</h2>
+        <div class="stats" id="statGrid"></div>
+        <div class="setting">
+          <div class="setting-text"><h3>statistics</h3><p>Counted on this device only.</p></div>
+          <div class="setting-ctl"><button class="btn" id="resetStatsBtn" type="button">reset</button></div>
+        </div>
+        <div class="setting">
+          <div class="setting-text"><h3>export</h3><p>Every setting, website and learned tracker as <code>rockyweb-settings.json</code>.</p></div>
+          <div class="setting-ctl"><button class="btn" id="exportBtn" type="button">export</button></div>
+        </div>
+        <div class="setting">
+          <div class="setting-text"><h3>import</h3><p>Replaces your current settings. Every field is checked before it is used.</p></div>
+          <div class="setting-ctl"><label class="btn" id="importLabel"><input type="file" id="importFile" accept="application/json,.json" hidden>import</label></div>
+        </div>
+        <div class="setting">
+          <div class="setting-text"><h3>reset everything</h3><p>Back to balanced. Forgets all websites, trackers, hidden elements and statistics.</p></div>
+          <div class="setting-ctl"><button class="btn danger" id="resetAllBtn" type="button">reset</button></div>
+        </div>
+        <div class="about" id="aboutPanel"></div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="shared/constants.js"></script>
+  <script src="shared/domain.js"></script>
+  <script src="shared/config.js"></script>
+  <script src="ui/ui-kit.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

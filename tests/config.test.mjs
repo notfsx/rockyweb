@@ -1,0 +1,199 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadShared } from '../scripts/load-shared.mjs';
+
+const RW = loadShared();
+
+test('fresh state defaults to Balanced with the documented schema', () => {
+  const s = RW.createDefaultState();
+  assert.equal(s.globalDefaultTier, 'balanced');
+  assert.deepEqual(s.globalCustomConfig.consentCategories, { necessary: true, functional: true, analytics: false, marketing: false });
+  assert.equal(s.globalCustomConfig.trackerHeuristicMode, 'cookie_strip');
+  assert.deepEqual(s.stats, { totalPopupsHandled: 0, totalAdsBlocked: 0, totalTrackersRestricted: 0 });
+  assert.deepEqual(s.siteProfiles, {});
+  assert.deepEqual(s.learnedTrackers, {});
+});
+
+test('getEffectiveConfig: global balanced preset', () => {
+  const c = RW.getEffectiveConfig(RW.createDefaultState(), 'www.news.example.com');
+  assert.equal(c.tier, 'balanced');
+  assert.equal(c.source, 'global');
+  assert.equal(c.siteKey, 'example.com');
+  assert.equal(c.adBlockNetwork, true);
+  assert.equal(c.trackerHeuristicMode, 'cookie_strip');
+  assert.equal(c.consentMode, 'custom_categories');
+  assert.equal(c.cosmeticFiltering, true);
+  assert.equal(c.stripUrlParams, true);
+  assert.equal(c.aggressiveFiltering, false);
+});
+
+test('each tier resolves to its documented engines', () => {
+  const s0 = RW.createDefaultState();
+  const expect = {
+    off: ['off', false, 'off', false, false],
+    consent_only: ['custom_categories', false, 'off', false, false],
+    balanced: ['custom_categories', true, 'cookie_strip', true, true],
+    strict: ['strict_reject', true, 'hard_block', true, true]
+  };
+  for (const [tier, [consent, ads, heur, cosm, strip]] of Object.entries(expect)) {
+    const s = RW.setSiteTier(s0, 'site.test', tier, 1);
+    const c = RW.getEffectiveConfig(s, 'site.test');
+    assert.equal(c.tier, tier);
+    assert.equal(c.source, 'site');
+    assert.equal(c.consentMode, consent, tier);
+    assert.equal(c.adBlockNetwork, ads, tier);
+    assert.equal(c.trackerHeuristicMode, heur, tier);
+    assert.equal(c.cosmeticFiltering, cosm, tier);
+    assert.equal(c.stripUrlParams, strip, tier);
+  }
+  const strict = RW.getEffectiveConfig(RW.setSiteTier(s0, 'site.test', 'strict', 1), 'site.test');
+  assert.deepEqual(strict.consentCategories, { necessary: true, functional: false, analytics: false, marketing: false });
+});
+
+test('site profile applies to subdomains (registrable-domain key)', () => {
+  const s = RW.setSiteTier(RW.createDefaultState(), 'https://shop.example.co.uk'.replace('https://', ''), 'consent_only', 1);
+  assert.ok(s.siteProfiles['example.co.uk']);
+  assert.equal(RW.getEffectiveConfig(s, 'checkout.example.co.uk').tier, 'consent_only');
+  assert.equal(RW.getEffectiveConfig(s, 'other.co.uk').tier, 'balanced');
+});
+
+test('flipping one switch snapshots the current preset into Custom', () => {
+  let s = RW.setSiteTier(RW.createDefaultState(), 'example.com', 'strict', 1);
+  s = RW.setSiteCustomOption(s, 'example.com', 'trackerHeuristicMode', 'cookie_strip', 2);
+  const c = RW.getEffectiveConfig(s, 'example.com');
+  assert.equal(c.tier, 'custom');
+  assert.equal(c.trackerHeuristicMode, 'cookie_strip');
+  // Everything else carried over from Strict
+  assert.equal(c.consentMode, 'strict_reject');
+  assert.equal(c.aggressiveFiltering, true);
+  assert.equal(c.adBlockNetwork, true);
+  assert.equal(s.siteProfiles['example.com'].updatedAt, 2);
+});
+
+test('custom site config is independent of later global custom edits', () => {
+  let s = RW.setSiteCustomOption(RW.createDefaultState(), 'example.com', 'cosmeticFiltering', false, 1);
+  s = RW.setGlobalCustomOption(s, 'adBlockNetwork', false);
+  assert.equal(s.globalDefaultTier, 'custom');
+  assert.equal(RW.getEffectiveConfig(s, 'example.com').adBlockNetwork, true);
+  assert.equal(RW.getEffectiveConfig(s, 'elsewhere.com').adBlockNetwork, false);
+});
+
+test('consent categories and the toast toggle never change the global tier', () => {
+  let s = RW.setGlobalCustomOption(RW.createDefaultState(), 'consentCategories', { functional: false, analytics: true, marketing: false });
+  s = RW.setGlobalCustomOption(s, 'showToastBadge', false);
+  assert.equal(s.globalDefaultTier, 'balanced');
+  const c = RW.getEffectiveConfig(s, 'a.com');
+  assert.deepEqual(c.consentCategories, { necessary: true, functional: false, analytics: true, marketing: false });
+  assert.equal(c.showToastBadge, false);
+});
+
+test('domain slider switches the site to custom; null removes it', () => {
+  let s = RW.setDomainSlider(RW.createDefaultState(), 'example.com', 'cdn.tracker.net', 'allow', 1);
+  const p = s.siteProfiles['example.com'];
+  assert.equal(p.tier, 'custom');
+  assert.deepEqual(p.domainSliderOverrides, { 'tracker.net': 'allow' });
+  s = RW.setDomainSlider(s, 'example.com', 'tracker.net', null, 2);
+  assert.deepEqual(s.siteProfiles['example.com'].domainSliderOverrides, {});
+  assert.throws(() => RW.setDomainSlider(s, 'example.com', 'example.com', 'block', 3), /first_party/);
+  assert.throws(() => RW.setDomainSlider(s, 'example.com', 'x.com', 'nuke', 3), /invalid_value/);
+});
+
+test('reset keeps hidden elements; empty profiles are pruned', () => {
+  let s = RW.setSiteTier(RW.createDefaultState(), 'example.com', 'off', 1);
+  s = RW.resetSiteProfile(s, 'example.com', 2);
+  assert.equal(s.siteProfiles['example.com'], undefined);
+  s = RW.addCosmeticSelector(s, 'example.com', '.promo', 3);
+  s = RW.setSiteTier(s, 'example.com', 'strict', 4);
+  s = RW.resetSiteProfile(s, 'example.com', 5);
+  assert.deepEqual(s.siteProfiles['example.com'].customCosmeticSelectors, ['.promo']);
+  assert.equal(s.siteProfiles['example.com'].tier, null);
+  assert.equal(RW.getEffectiveConfig(s, 'example.com').source, 'global');
+});
+
+test('mutators never modify their input state', () => {
+  const s = RW.createDefaultState();
+  const frozen = JSON.stringify(s);
+  RW.setSiteTier(s, 'a.com', 'strict', 1);
+  RW.setSiteCustomOption(s, 'a.com', 'adBlockNetwork', false, 1);
+  RW.setGlobalTier(s, 'custom');
+  RW.setGlobalCustomOption(s, 'stripUrlParams', false);
+  RW.setTrackerGlobalOverride(s, 'b.com', 'block', 1);
+  assert.equal(JSON.stringify(s), frozen);
+});
+
+test('consentIntent maps choices to decisions', () => {
+  const s = RW.createDefaultState();
+  assert.equal(RW.consentIntent(RW.getEffectiveConfig(s, 'a.com')).decision, 'reject');
+  const all = RW.setGlobalCustomOption(s, 'consentCategories', { functional: true, analytics: true, marketing: true });
+  assert.equal(RW.consentIntent(RW.getEffectiveConfig(all, 'a.com')).decision, 'accept');
+  const mixed = RW.setGlobalCustomOption(s, 'consentCategories', { functional: true, analytics: true, marketing: false });
+  assert.equal(RW.consentIntent(RW.getEffectiveConfig(mixed, 'a.com')).decision, 'custom');
+  const strict = RW.setSiteTier(all, 'a.com', 'strict', 1);
+  const si = RW.consentIntent(RW.getEffectiveConfig(strict, 'a.com'));
+  assert.equal(si.decision, 'reject');
+  assert.equal(si.categories.analytics, false);
+  assert.equal(RW.consentIntent(RW.getEffectiveConfig(RW.setSiteTier(s, 'a.com', 'off', 1), 'a.com')), null);
+});
+
+test('learnTracker promotes after 3 distinct first parties', () => {
+  const s = RW.createDefaultState();
+  assert.equal(RW.learnTracker(s, 'thirdparty.com', 'site1.com', 1).promoted, false);
+  assert.equal(RW.learnTracker(s, 'thirdparty.com', 'site1.com', 2).changed, false);
+  assert.equal(RW.learnTracker(s, 'thirdparty.com', 'site2.com', 3).promoted, false);
+  assert.equal(s.learnedTrackers['thirdparty.com'].learnedStatus, 'allow');
+  assert.equal(RW.learnTracker(s, 'thirdparty.com', 'site3.com', 4).promoted, true);
+  assert.deepEqual(s.learnedTrackers['thirdparty.com'], {
+    firstPartyHosts: ['site1.com', 'site2.com', 'site3.com'],
+    learnedStatus: 'cookie_block',
+    globalManualOverride: null,
+    firstSeen: 1,
+    lastSeen: 4
+  });
+});
+
+test('normalizeState rejects hostile or malformed imports', () => {
+  const s = RW.normalizeState({
+    globalDefaultTier: 'nuclear',
+    globalCustomConfig: { adBlockNetwork: 'yes', trackerHeuristicMode: 'hard_block', consentCategories: { necessary: false, marketing: 1 } },
+    siteProfiles: {
+      'Example.COM': { tier: 'strict', customCosmeticSelectors: ['.ok', 'body{display:none}', 'a/*x*/', '@import url(x)', 'div[foo'] },
+      'not a domain': { tier: 'off' },
+      'empty.com': { tier: 'bogus' }
+    },
+    learnedTrackers: { 'bad domain!': {}, 'ok.net': { firstPartyHosts: ['a.com', 'b.com', 'c.com', '<script>'], learnedStatus: 'weird' } },
+    stats: { totalAdsBlocked: -5, totalPopupsHandled: 3.7 }
+  });
+  assert.equal(s.globalDefaultTier, 'balanced');
+  assert.equal(s.globalCustomConfig.adBlockNetwork, true);
+  assert.equal(s.globalCustomConfig.trackerHeuristicMode, 'hard_block');
+  assert.equal(s.globalCustomConfig.consentCategories.necessary, true);
+  assert.equal(s.globalCustomConfig.consentCategories.marketing, false);
+  assert.deepEqual(Object.keys(s.siteProfiles), ['example.com']);
+  assert.deepEqual(s.siteProfiles['example.com'].customCosmeticSelectors, ['.ok']);
+  assert.deepEqual(Object.keys(s.learnedTrackers), ['ok.net']);
+  assert.equal(s.learnedTrackers['ok.net'].learnedStatus, 'cookie_block');
+  assert.deepEqual(s.stats, { totalPopupsHandled: 3, totalAdsBlocked: 0, totalTrackersRestricted: 0 });
+});
+
+test('isValidSelector blocks CSS injection', () => {
+  for (const ok of ['.promo', '#ad-1', 'div[data-x="a b"] > span', 'a:not(.x)', 'li:nth-of-type(3)', '#\\31 23', 'div.md\\:flex']) assert.ok(RW.isValidSelector(ok), ok);
+  for (const bad of ['', 'a{}', '} body { display:none', 'a /* */', '@media x', 'a;b', '<b>', 'a\\', 'a(', 'a]', '"open']) assert.ok(!RW.isValidSelector(bad), bad);
+});
+
+test('custom switches are remembered across presets; resume keeps sliders', () => {
+  let s = RW.setSiteCustomOption(RW.createDefaultState(), 'a.com', 'cosmeticFiltering', false, 1);
+  s = RW.setDomainSlider(s, 'a.com', 'x.net', 'block', 2);
+  s = RW.setSiteTier(s, 'a.com', 'off', 3);
+  assert.equal(RW.getEffectiveConfig(s, 'a.com').tier, 'off');
+  s = RW.setSiteTier(s, 'a.com', 'custom', 4);
+  assert.equal(RW.getEffectiveConfig(s, 'a.com').cosmeticFiltering, false);
+  s = RW.setSiteTier(s, 'a.com', 'off', 5);
+  s = RW.resetSiteProfile(s, 'a.com', 6, { keepRules: true });
+  assert.equal(RW.getEffectiveConfig(s, 'a.com').tier, 'balanced');
+  assert.deepEqual(s.siteProfiles['a.com'].domainSliderOverrides, { 'x.net': 'block' });
+  // A switch flipped on a preset still snapshots that preset, not the remembered set.
+  s = RW.setSiteTier(s, 'a.com', 'strict', 7);
+  s = RW.setSiteCustomOption(s, 'a.com', 'stripUrlParams', false, 8);
+  assert.equal(RW.getEffectiveConfig(s, 'a.com').cosmeticFiltering, true);
+  assert.equal(RW.getEffectiveConfig(s, 'a.com').consentMode, 'strict_reject');
+});
