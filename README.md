@@ -24,7 +24,7 @@ Chrome 116 or newer. No build step is needed.
 Off by default. Turn on "automatically optimise protection for each site" on the settings page and Rockyweb quietly makes small, reversible, page-scoped adjustments where the right answer depends on context. The first one shipped: hiding an unsolicited newsletter overlay on an article, while leaving the same kind of form alone on account, login and checkout pages, when you opened it yourself, or while you are typing in it.
 
 - **Model:** Chrome's built-in Gemini Nano through the `LanguageModel` API, run from the extension service worker (exposed there from Chrome 138, confirmed on Chrome 153). No cloud, accounts, keys or telemetry.
-- **Only when needed:** cheap local rules first. The model is asked only about an overlay that passed every rule and is still ambiguous; an ordinary page makes zero model calls.
+- **Only when needed:** cheap local rules first. The model is asked only about an overlay on an article that passed every rule and is still ambiguous; an ordinary page makes zero model calls.
 - **Bounded authority:**
   - The model picks `hide_overlay` or `leave_unchanged` for one candidate ID, through a fixed JSON schema.
   - It never supplies selectors, code, URLs or network rules.
@@ -119,6 +119,8 @@ npm run store:assets   # regenerate the store screenshots and promo tiles (needs
 
 To install Playwright: `npm i -D playwright`, then `npx playwright install chromium`.
 
+`npm run test:nano` loads `extension/` into your own Chrome through the debugging pipe, so no "Load unpacked" click is needed. Set `NANO_PROFILE` to keep its profile (and the multi-GB model) out of a synced folder such as OneDrive, and `NANO_DOWNLOAD=yes` to start the model download without asking.
+
 Store submission text, permission justifications and image list: [store/LISTING.md](store/LISTING.md).
 
 ## Layout
@@ -143,5 +145,15 @@ tests/          unit tests and the end-to-end suite
 - When a banner offers only reject or accept, "necessary and functional only" is answered with reject.
 - Learned-tracker rules are scoped by the requesting frame, so a cross-site iframe follows its own site's settings.
 - The stand-in scripts are web accessible, which lets a page detect that the extension is installed.
-- The browser suites use a deterministic model double in place of `LanguageModel`. Real Nano inference has to be checked on an eligible machine with `npm run test:nano`.
+- The browser suites (`npm run test:e2e`) and `npm run perf` use a deterministic model double in place of `LanguageModel`. Real inference is covered by `npm run test:nano` (see below).
+- After every Chrome start, the first Gemini Nano inference took 4 to 11 minutes on the test laptop. Until the model is warm, each decision times out after 20 s and the overlay is simply left alone; after that, decisions take about 1 s.
+- While the model is loaded, Chrome's own model process holds about 5 GB of memory and 3 GB of video memory. Releasing Rockyweb's session does not unload it; Chrome decides when to.
+
+## Real Gemini Nano: what was verified
+
+Checked on 2026-11-15 on Windows 11, Chrome 157, RTX 3080 Laptop GPU, 47 GB RAM. Details and numbers: [tests/nano/results.md](tests/nano/results.md); raw report: `tests/nano/nano-report.json`.
+
+- **Real Nano:** the service worker path with every Rockyweb page closed (`npm run test:nano` passes: article overlay hidden with exactly one model call, ordinary page zero calls, session released when idle, cold model times out cleanly), the paired fixtures, "describe a change" in the popup, and latency and memory.
+- **Model double:** the 26 automatic optimisation, Light and consent browser checks, the settings download and availability states, and `npm run perf`.
+- **No model at all:** the 19 core browser checks, and the greyed-out AI controls, both in Chromium where `LanguageModel` reports `unavailable`.
 - Choices you make yourself in an Incognito window (for example a site's mode) are saved like any other choice. Rockyweb never learns from or records private browsing on its own.

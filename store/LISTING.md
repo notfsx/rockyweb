@@ -93,8 +93,8 @@ No login needed. To test: open any news site with a cookie banner; Rockyweb answ
 
 ## 6. Before you submit
 
-- [ ] `npm run check` and `npm run test:e2e` pass
-- [ ] `npm run test:nano` passes on a machine with Chrome's on-device AI (real model, all Rockyweb pages closed)
+- [x] `npm run check` and `npm run test:e2e` pass (2026-11-15, for 1.1.0)
+- [x] `npm run test:nano` passes on a machine with Chrome's on-device AI (real model, all Rockyweb pages closed; 2026-11-15, see `tests/nano/results.md`)
 - [ ] Version in `extension/manifest.json` bumped for every new upload
 - [ ] Privacy policy published and linked
 - [ ] Developer account has a verified contact email

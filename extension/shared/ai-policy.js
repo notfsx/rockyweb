@@ -65,6 +65,12 @@
     return { outcome: 'ask', reason: 'ambiguous' };
   }
 
+  // The model only judges overlays on articles. On real Nano it also hid sign-up overlays on a shop
+  // home page, so other pages are left alone unless you chose "hide" yourself.
+  function modelMayDecide(sig) {
+    return !!sig && sig.pageKind === 'article';
+  }
+
   const SYSTEM_PROMPT = [
     'You help a privacy extension decide whether to quietly hide one overlay on a web page.',
     'Possible actions: "hide_overlay" (hide this overlay on this page only, the user can undo) or "leave_unchanged".',
@@ -211,6 +217,7 @@
     AI_PLAN_SCHEMA: PLAN_SCHEMA,
     sanitizeSignals,
     localVerdict,
+    modelMayDecide,
     buildPrompt,
     responseSchema,
     parseDecision,

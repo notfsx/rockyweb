@@ -26,6 +26,7 @@ const GIF = Buffer.from('R0lGODlhAQABAAAAACw=', 'base64');
 
 function route(p) {
   if (p === '/plain') return doc('plain', ARTICLE.replace('<article', '<main').replace('</article>', '</main>'));
+  if (p === '/shop/home') return doc('shop', '<main><h1>Autumn collection</h1><p>Wax jackets and wellies.</p></main>' + append(OVERLAY('<p>Get 10% off: subscribe</p>'), 600));
   if (p.startsWith('/article/newsletter') || p.startsWith('/article/slow')) return doc('article', ARTICLE + append(OVERLAY(), 600));
   if (p === '/article/deliberate') {
     return doc('article', ARTICLE + `<button id="open" style="position:fixed;top:10px;right:10px">Subscribe to the newsletter</button>
@@ -378,6 +379,14 @@ try {
     await sleep(4000);
     assert.equal((await modelStats()).calls, 0);
     assert.equal((await modelStats()).created, 0);
+  });
+
+  await check('sign-up overlay on a page that is not an article: left alone, no model call', async () => {
+    await model({ mode: 'article-hide' });
+    await visit(at('store.test', '/shop/home'));
+    await sleep(4000);
+    assert.equal(await shown('.newsletter-popup'), true);
+    assert.equal((await modelStats()).calls, 0);
   });
 
   await check('invalid model output is discarded', async () => {

@@ -1,0 +1,72 @@
+{
+  "startedAt": "2026-11-15T06:02:08.305Z",
+  "platform": "win32 10.0.26300",
+  "cpus": 16,
+  "ramGb": 47,
+  "steps": [
+    {
+      "name": "connected to Chrome",
+      "version": "157.0.8103.51"
+    },
+    {
+      "name": "extension loaded over the CDP pipe",
+      "result": "dfncmkelafglcpgpbjfngjegjbaffoel"
+    },
+    {
+      "name": "Rockyweb loaded",
+      "extId": "dfncmkelafglcpgpbjfngjegjbaffoel",
+      "manifestName": "Rockyweb: Cookie Consent, Ad and Tracker Blocker"
+    },
+    {
+      "name": "service worker runs the code on disk",
+      "fresh": true
+    },
+    {
+      "name": "LanguageModel in the service worker",
+      "availability": "available"
+    },
+    {
+      "name": "all Rockyweb pages closed",
+      "openExtensionPages": 0
+    },
+    {
+      "name": "cold model: article overlay",
+      "state": "shown",
+      "seconds": 22.6,
+      "modelCalls": 0,
+      "timeouts": 1,
+      "pending": 0
+    },
+    {
+      "name": "model warm-up by the test harness",
+      "createSeconds": 356.8,
+      "firstInferenceSeconds": 0.5
+    },
+    {
+      "name": "article with newsletter overlay",
+      "state": "hidden",
+      "seconds": 5.1,
+      "modelCalls": 1,
+      "timeouts": 0,
+      "pending": 0
+    },
+    {
+      "name": "ordinary page with no candidate",
+      "modelCalls": 0
+    },
+    {
+      "name": "idle session released",
+      "hasSession": false
+    },
+    {
+      "name": "article after the session was released",
+      "state": "hidden",
+      "seconds": 4.5,
+      "modelCalls": 1,
+      "timeouts": 0,
+      "pending": 0
+    }
+  ],
+  "chrome": "157.0.8103.51",
+  "result": "pass"
+}

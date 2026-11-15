@@ -14,6 +14,16 @@
       .finally(() => clearTimeout(t));
   }
 
+  // Rejects as soon as the signal aborts, even if the API ignores it.
+  function untilAborted(promise, signal) {
+    if (!signal) return promise;
+    let onAbort;
+    return Promise.race([promise, new Promise((_, reject) => {
+      onAbort = () => reject(new Error('aborted'));
+      if (signal.aborted) onAbort(); else signal.addEventListener('abort', onAbort, { once: true });
+    })]).finally(() => signal.removeEventListener('abort', onAbort));
+  }
+
   function createAiBroker(opts) {
     const o = opts || {};
     const getLM = o.getLM || (() => root.LanguageModel);
@@ -56,19 +66,29 @@
       idleTimer = unref(setTimeout(release, IDLE_RELEASE));
     }
 
-    function session() {
+    // Creation is bounded by the running request's timeout and cancellation: a cold model can take
+    // minutes to load, and Chrome keeps loading it after an abort, so a later request finds it ready.
+    function session(signal) {
       if (base) return Promise.resolve(base);
       if (!basePromise) {
         basePromise = (async () => {
-          const s = await getLM().create(Object.assign({}, RW.AI_MODEL_OPTIONS, {
-            initialPrompts: [{ role: 'system', content: systemPrompt }]
+          const created = getLM().create(Object.assign({}, RW.AI_MODEL_OPTIONS, {
+            initialPrompts: [{ role: 'system', content: systemPrompt }],
+            signal
           }));
+          let s;
+          try {
+            s = await untilAborted(created, signal);
+          } catch (err) {
+            created.then((late) => { try { late.destroy(); } catch (_) { /* ignore */ } }, () => {});
+            throw err;
+          }
           stats.sessionsCreated++;
           base = s;
           return s;
         })().finally(() => { basePromise = null; });
       }
-      return basePromise;
+      return untilAborted(basePromise, signal);
     }
 
     async function run(job) {
@@ -82,7 +102,7 @@
       const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, PROMPT_TIMEOUT);
       let child = null;
       try {
-        const s = await session();
+        const s = await session(ctrl.signal);
         // A clone keeps each decision independent of earlier ones.
         child = typeof s.clone === 'function' ? await s.clone({ signal: ctrl.signal }) : s;
         stats.prompts++;

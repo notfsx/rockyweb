@@ -90,3 +90,14 @@ test('described changes: recognised controls only, unsupported shown plainly', (
   assert.equal(RW.parsePlan('{"changes": "all"}'), null);
   assert.equal(RW.parsePlan('nope'), null);
 });
+
+test('the model is only asked about overlays on articles', () => {
+  // Real Nano hid a discount sign-up overlay on a shop home page; only articles reach the model.
+  assert.equal(RW.modelMayDecide(variant({})), true);
+  for (const pageKind of ['home', 'listing', 'other', 'search']) {
+    const sig = variant({ pageKind, articleOnPage: false });
+    assert.equal(RW.localVerdict(sig).outcome, 'ask', `${pageKind}: an explicit "hide" choice still applies`);
+    assert.equal(RW.modelMayDecide(sig), false, pageKind);
+  }
+  assert.equal(RW.modelMayDecide(null), false);
+});

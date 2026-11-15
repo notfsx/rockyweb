@@ -6,7 +6,7 @@ const RW = loadShared();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Deterministic stand-in for Chrome's LanguageModel. respond(prompt) decides each answer.
-function fakeLM({ availability = 'available', respond = () => '{"candidate":"c1","action":"leave_unchanged","confidence":"high"}', delay = 5, failCreate = false } = {}) {
+function fakeLM({ availability = 'available', respond = () => '{"candidate":"c1","action":"leave_unchanged","confidence":"high"}', delay = 5, failCreate = false, createDelay = 0, ignoreSignal = false } = {}) {
   const log = { created: 0, cloned: 0, destroyed: 0, prompts: 0, availabilityCalls: 0 };
   const makeSession = () => ({
     async clone() { log.cloned++; return makeSession(); },
@@ -23,7 +23,19 @@ function fakeLM({ availability = 'available', respond = () => '{"candidate":"c1"
     log,
     LM: {
       async availability(o) { log.availabilityCalls++; assert.deepEqual(o, RW.AI_MODEL_OPTIONS); return availability; },
-      async create(o) { if (failCreate) throw new Error('no'); assert.ok(o.initialPrompts); log.created++; return makeSession(); }
+      async create(o) {
+        if (failCreate) throw new Error('no');
+        assert.ok(o.initialPrompts);
+        log.createCalls = (log.createCalls || 0) + 1;
+        if (createDelay) {
+          await new Promise((resolve, reject) => {
+            const t = setTimeout(resolve, createDelay);
+            if (o.signal && !ignoreSignal) o.signal.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('aborted', 'AbortError')); });
+          });
+        }
+        log.created++;
+        return makeSession();
+      }
     }
   };
 }
@@ -90,4 +102,34 @@ test('session failures are not reused', async () => {
   assert.deepEqual(await b.prompt({ key: 'a', prompt: 'x' }), { ok: false, reason: 'session_error' });
   assert.equal(b.hasSession, false);
   assert.equal(b.stats.failures, 1);
+});
+
+test('a cold model that is slow to create times out without blocking the queue', async () => {
+  // Real Nano on a cold start took minutes for the first session; requests must stay bounded.
+  for (const ignoreSignal of [false, true]) {
+    const f = fakeLM({ createDelay: 150, ignoreSignal });
+    const b = RW.createAiBroker({ getLM: () => f.LM, promptTimeout: 40 });
+    const t0 = Date.now();
+    assert.deepEqual(await b.prompt({ key: 'a', prompt: 'x' }), { ok: false, reason: 'timeout' });
+    assert.ok(Date.now() - t0 < 120, 'bounded by the request timeout');
+    assert.equal(b.pending, 0, 'queue is free again');
+    assert.equal(b.hasSession, false);
+    assert.equal(b.stats.prompts, 0, 'no prompt was sent');
+    await sleep(200);
+    if (ignoreSignal) assert.equal(f.log.destroyed, 1, 'a session that arrives late is destroyed');
+    assert.equal(b.hasSession, false);
+  }
+});
+
+test('cancelling during session creation frees the queue', async () => {
+  const f = fakeLM({ createDelay: 200 });
+  const b = RW.createAiBroker({ getLM: () => f.LM });
+  const c = new AbortController();
+  const p = b.prompt({ key: 'a', prompt: 'x', signal: c.signal });
+  setTimeout(() => c.abort(), 20);
+  assert.deepEqual(await p, { ok: false, reason: 'cancelled' });
+  assert.equal(b.pending, 0);
+  const f2 = fakeLM();
+  const b2 = RW.createAiBroker({ getLM: () => f2.LM });
+  assert.equal((await b2.prompt({ key: 'b', prompt: 'y' })).ok, true);
 });

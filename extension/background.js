@@ -620,6 +620,7 @@ const HANDLERS = {
       if (verdict.outcome !== 'ask') return leave('rule', verdict.reason, epoch);
       if (caps.newsletter === 'hide') return { outcome: 'hide_overlay', source: 'your_choice', epoch };
       if (caps.newsletter !== 'ai') return leave('rule', 'not_enabled', epoch);
+      if (!RW.modelMayDecide(sig)) return leave('rule', 'not_article', epoch);
       if (RW.isAiUndone(state, cfg.siteKey, sig.signature)) return leave('rule', 'undone_before', epoch);
       const key = RW.decisionKey(sig);
       const remembered = RW.recallAiDecision(state, cfg.siteKey, key, epoch);
