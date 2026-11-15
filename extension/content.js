@@ -825,22 +825,31 @@
       }
     }
 
-    function schedule(delay) {
+    // Growing gaps: the first overlay is seen quickly, and a page that keeps changing still has
+    // scans left about 10 s in. MAX_SCANS still caps the total.
+    const SCAN_DELAYS = [800, 300, 600, 1200, 2400, 4800];
+
+    function schedule() {
       if (scanTimer || scans >= MAX_SCANS || !observer) return;
-      scanTimer = setTimeout(scan, delay);
+      scanTimer = setTimeout(scan, SCAN_DELAYS[Math.min(scans, SCAN_DELAYS.length - 1)]);
     }
 
-    function onVisible() { if (document.visibilityState === 'visible') schedule(700); }
+    function onVisible() { if (document.visibilityState === 'visible') schedule(); }
 
     function start() {
       if (!IS_TOP || observer) return;
       const begin = () => {
         if (!document.body || observer) return;
         // Only direct children of <body>: popups are appended there, deeper changes are ignored.
-        observer = new MutationObserver(() => schedule(700));
+        // Note when each element arrived, so "opened by you" never depends on when the scan runs.
+        observer = new MutationObserver((records) => {
+          const at = Date.now();
+          for (const r of records) for (const n of r.addedNodes) if (n.nodeType === 1 && !firstSeen.has(n)) firstSeen.set(n, at);
+          schedule();
+        });
         observer.observe(document.body, { childList: true });
         document.addEventListener('visibilitychange', onVisible);
-        schedule(2500);
+        schedule();
       };
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
       else begin();

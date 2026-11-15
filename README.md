@@ -146,14 +146,21 @@ tests/          unit tests and the end-to-end suite
 - Learned-tracker rules are scoped by the requesting frame, so a cross-site iframe follows its own site's settings.
 - The stand-in scripts are web accessible, which lets a page detect that the extension is installed.
 - The browser suites (`npm run test:e2e`) and `npm run perf` use a deterministic model double in place of `LanguageModel`. Real inference is covered by `npm run test:nano` (see below).
-- After every Chrome start, the first Gemini Nano inference took 4 to 11 minutes on the test laptop. Until the model is warm, each decision times out after 20 s and the overlay is simply left alone; after that, decisions take about 1 s.
+- After every Chrome start, the first Gemini Nano inference took 4 to 11 minutes on the test laptop, with or without debugging. Until the model is warm the overlay is simply left alone: the first request times out after 20 s, and for the next 60 s requests are answered at once without waiting again. After that, decisions take about 1 s.
 - While the model is loaded, Chrome's own model process holds about 5 GB of memory and 3 GB of video memory. Releasing Rockyweb's session does not unload it; Chrome decides when to.
 
 ## Real Gemini Nano: what was verified
 
 Checked on 2026-11-15 on Windows 11, Chrome 157, RTX 3080 Laptop GPU, 47 GB RAM. Details and numbers: [tests/nano/results.md](tests/nano/results.md); raw report: `tests/nano/nano-report.json`.
 
-- **Real Nano:** the service worker path with every Rockyweb page closed (`npm run test:nano` passes: article overlay hidden with exactly one model call, ordinary page zero calls, session released when idle, cold model times out cleanly), the paired fixtures, "describe a change" in the popup, and latency and memory.
-- **Model double:** the 26 automatic optimisation, Light and consent browser checks, the settings download and availability states, and `npm run perf`.
-- **No model at all:** the 19 core browser checks, and the greyed-out AI controls, both in Chromium where `LanguageModel` reports `unavailable`.
+- **Real Nano, measured:**
+  - The service worker path with every Rockyweb page closed (`npm run test:nano` passes): article overlay hidden with exactly one model call, ordinary page zero calls, session released when idle, cold model times out cleanly and the next request within a minute is answered at once.
+  - The same without a debugger on the worker: Chrome stopped the idle worker after 31 s three times, each next decision still hid the overlay (2.7 to 3.2 s from navigation), and memory stayed flat.
+  - The cold start in a plain Chrome launch: 492 s for the first prompt, against 504 s with debugging, so the delay is Chrome loading the model, not the test setup.
+  - "Describe a change" on 11 requests: 11 right in the final run, including "turn off ad blocking but keep blocking trackers" (only the ad blocking switch changes).
+  - From navigation to hidden: 2.7 to 3.2 s, down from 4.3 to 5.7 s.
+  - The paired fixtures, latency and memory (first round).
+- **Real Incognito window, measured:** allowed in Incognito, a private window makes no AI requests, learns no trackers, leaves no tab record in `chrome.storage.session` and nothing in the export; a normal window in the same run does all of those.
+- **Model double:** the 27 automatic optimisation, Light and consent browser checks, the settings download and availability states, and `npm run perf`.
+- **No model at all:** the 20 core browser checks, and the greyed-out AI controls, both in Chromium where `LanguageModel` reports `unavailable`.
 - Choices you make yourself in an Incognito window (for example a site's mode) are saved like any other choice. Rockyweb never learns from or records private browsing on its own.

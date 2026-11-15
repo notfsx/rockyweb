@@ -21,7 +21,7 @@ You can see, export, reset or delete all of it from the settings page (data, res
 
 ## On-device AI (optional, off by default)
 
-If you turn on automatic optimisation, Rockyweb uses Chrome's built-in model (Gemini Nano), which runs entirely on your device. Chrome downloads and stores the model; Rockyweb starts that download only after you choose to. The model receives a few facts about one overlay (page type, position, number of fields, whether you interacted with it, and a short heading from the page). It never receives what you typed, passwords, cookies, page addresses or your browsing history. Nothing is sent to Rockyweb or anyone else. The feature never runs in Incognito or in Light mode.
+If you turn on automatic optimisation, Rockyweb uses Chrome's built-in model (Gemini Nano), which runs entirely on your device. Chrome downloads and stores the model; Rockyweb starts that download only after you choose to. It is asked only about an overlay on an article, and receives a few facts about that one overlay (page type, position, number of fields, whether you interacted with it, and a short heading from the page). It never receives what you typed, passwords, cookies, page addresses or your browsing history. Nothing is sent to Rockyweb or anyone else. The feature never runs in Incognito or in Light mode.
 
 ## What Rockyweb does not do
 

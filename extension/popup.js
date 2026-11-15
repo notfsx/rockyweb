@@ -122,7 +122,7 @@
     gear.hidden = false;
     if (errorMsg) main.append(h('p', { class: 'error', role: 'alert', text: errorMsg }));
     if (advanced) main.append(...renderAdvanced(data.config));
-    else main.append(...renderMain(data.config));
+    else main.append(...renderMain(data.config).filter(Boolean));
     main.append(renderFoot());
   }
 
@@ -271,10 +271,10 @@
     let session = null;
     try {
       session = await LanguageModel.create(Object.assign({}, RW.AI_MODEL_OPTIONS, {
-        initialPrompts: [{ role: 'system', content: RW.AI_PLAN_SYSTEM_PROMPT }], signal: ctrl.signal
+        initialPrompts: RW.planInitialPrompts(), signal: ctrl.signal
       }));
-      const raw = await session.prompt(`Request about this website: ${JSON.stringify(text)}`, { responseConstraint: RW.AI_PLAN_SCHEMA, signal: ctrl.signal });
-      const plan = RW.parsePlan(raw);
+      const raw = await session.prompt(RW.planRequest(text), { responseConstraint: RW.AI_PLAN_SCHEMA, signal: ctrl.signal });
+      const plan = RW.checkPlan(RW.parsePlan(raw), text, cfg);
       if (!plan) describe.error = 'Rockyweb could not turn that into settings. Try rephrasing it.';
       else if (!plan.changes.length && !plan.unsupported.length) describe.error = 'That does not seem to ask for any change.';
       else { describe.plan = plan; describe.preview = RW.describePlan(plan, cfg); }

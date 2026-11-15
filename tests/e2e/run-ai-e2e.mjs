@@ -32,6 +32,11 @@ function route(p) {
     return doc('article', ARTICLE + `<button id="open" style="position:fixed;top:10px;right:10px">Subscribe to the newsletter</button>
       <script>document.getElementById('open').addEventListener('click', function () { document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(OVERLAY())}); });</script>`);
   }
+  if (p === '/article/busy-deliberate') {
+    return doc('article', ARTICLE + `<button id="open" style="position:fixed;top:10px;right:10px">Subscribe to the newsletter</button>
+      <script>var n = 0; var t = setInterval(function () { var d = document.createElement('div'); d.textContent = 'update ' + (++n); document.body.appendChild(d); if (n > 40) clearInterval(t); }, 150);
+      document.getElementById('open').addEventListener('click', function () { document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(OVERLAY())}); });</script>`);
+  }
   if (p === '/account/login') {
     return doc('sign in', '<main><h1>Your account</h1></main>' + append(OVERLAY('<h3>Sign in</h3><input type="password" name="password">'), 600));
   }
@@ -358,6 +363,16 @@ try {
     await sleep(3000);
     await web.click('#open');
     await sleep(3500);
+    assert.equal(await shown('.newsletter-popup'), true);
+    assert.equal((await modelStats()).calls, 0);
+  });
+
+  await check('form you open on a busy page, after the early scans: left alone, no model call', async () => {
+    await model({ mode: 'article-hide' });
+    await visit(at('busy.test', '/article/busy-deliberate'));
+    await sleep(6500);
+    await web.click('#open');
+    await sleep(6000);
     assert.equal(await shown('.newsletter-popup'), true);
     assert.equal((await modelStats()).calls, 0);
   });

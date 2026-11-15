@@ -1,25 +1,59 @@
 # Real Gemini Nano: results from 2026-11-15
 
-Machine: Windows 11 Pro (build 26300), Google Chrome 157.0.8103.51, AMD Ryzen 9 5900HS (8 cores), 47 GB RAM, NVIDIA GeForce RTX 3080 Laptop GPU (8 GB). Chrome downloaded the model in 185 s into a separate test profile. No model double was used for anything on this page.
+Machine: Windows 11 Pro (build 26300), Google Chrome 157.0.8103.51, AMD Ryzen 9 5900HS (8 cores), 47 GB RAM, NVIDIA GeForce RTX 3080 Laptop GPU (8 GB). `chrome://on-device-internals` reports device performance class "Very High" and the GPU model component ready. Chrome downloaded the model in 185 s into a separate test profile. No model double was used for anything on this page.
 
 **Measured** means read from the browser or the operating system during these runs. **Estimated** is marked as such.
 
 ## `npm run test:nano` (all Rockyweb pages closed, inference in the service worker)
 
-Result: **pass** (`tests/nano/nano-report.json`).
+Result: **pass** (`tests/nano/nano-report.json`, release run on the final code).
 
 | Step | Outcome |
 |---|---|
 | Cold model, article overlay | left alone, the request timed out after 20 s, queue free, 0 model calls |
-| Warm-up by the test harness | the first inference after the Chrome start took several minutes (see below) |
-| Article with newsletter overlay | hidden, exactly 1 model call, about 5 s after navigation |
+| Next article within a minute | answered at once with "model warming" (1.1 s from navigation), left alone, 0 model calls |
+| Warm-up by the test harness | 312 s for the first inference after the Chrome start |
+| Article with newsletter overlay | hidden, exactly 1 model call, 3.2 s after navigation |
 | Ordinary page | 0 model calls |
 | After about a minute idle | Rockyweb's session released |
-| Article after the release | hidden, 1 model call, about 4.5 s |
+| Article after the release | hidden, 1 model call, 2.9 s after navigation |
+
+The test harness keeps DevTools attached to the service worker, which keeps it alive. The next section covers the worker without it.
+
+## Service worker lifetime without a debugger (measured)
+
+Only pages were attached; the worker was attached for one evaluation at a time to read `broker.stats`, then detached. Chrome's own `chrome://serviceworker-internals` gave the running status. Final code:
+
+| Check | Outcome |
+|---|---|
+| Cold start, no debugger | article overlay left alone, 1 timeout, nothing pending afterwards |
+| Worker stopped (`stopAllWorkers`) during a cold request | worker STOPPED, overlay still shown, page unaffected. In the final code the backoff had already answered, so nothing was pending; an earlier run of the same check before the backoff stopped the worker with 1 request pending, with the same outcome |
+| Idle worker stopped by Chrome | after 31 s, three times |
+| Next decision after each stop | hidden in 3.2, 2.7 and 2.8 s from navigation, each in a new worker instance (1 session created, 1 prompt, 0 pending) |
+| Ordinary page afterwards | 0 model calls |
+| Memory across the three restarts | Chrome's model process 5068 to 5070 MB; extension process 22 to 24 MB while running, gone while stopped. No growth |
+
+Nothing hung and nothing leaked across worker restarts. On a warm model a restart costs little: each of those decisions included creating a new session and was still faster than before this round's scheduling change.
+
+## Cold start: what it is and what Rockyweb does
+
+The first inference after each Chrome start is slow on this laptop. To rule out the test setup, the same localhost page timed `LanguageModel` straight after launch, in an existing profile with the model downloaded long before:
+
+| Launch | `availability()` | `create()` | First prompt | Second prompt |
+|---|---|---|---|---|
+| Plain Chrome (only the profile and the URL on the command line), no debugging | 2.3 s | 5.6 s | 492 s | 0.16 s |
+| Same profile, launched with the debugging pipe | 2.3 s | 5.4 s | 504 s | 0.13 s |
+
+So the delay is real and comes from Chrome loading the model, not from remote debugging, a fresh profile or a recent download. It sits wherever the model first has to run: in the first prompt on a page with no system prompt, and in `create()` when there is one, as in Rockyweb's worker (where the harness measured 312 s, 374 s and 167 s on three starts). Earlier starts ranged from 252 to 632 s. An abort does not lose progress, because Chrome keeps loading. A third plain launch was discarded: the page never loaded behind Chrome's start-up prompts.
+
+What Rockyweb does about it (unit-tested with the fake `LanguageModel`, and seen on real Nano above):
+- Every request is bounded by the 20 s timeout, including session creation, so the queue never waits on a cold model.
+- After a timeout on a session that has not answered yet (during creation or on its first prompt), the broker answers "model warming" at once for 60 s instead of waiting again, then tries once more. A timeout on a session that has answered before does not start the backoff.
+- No warm-up at browser start and no page kept alive: the overlay is simply left alone until the model is ready.
 
 ## Paired fixtures and other cases against real Nano
 
-Same fixtures as `tests/e2e/run-ai-e2e.mjs`, run by a local copy of the harness with no model double, two full runs. Each case is on a fresh site so nothing is recalled from memory unless stated.
+Same fixtures as `tests/e2e/run-ai-e2e.mjs`, run by a local copy of the harness with no model double, two full runs, before this round's changes (the decision code they exercise is unchanged). Each case is on a fresh site so nothing is recalled from memory unless stated.
 
 | Case | Decided by | Real Nano outcome | Model calls |
 |---|---|---|---|
@@ -38,17 +72,22 @@ Before the `not_article` rule, real Nano hid both shop home page overlays (`hide
 
 ## Latency (measured)
 
-Time inside the service worker broker for one decision (availability check, session or clone, prompt):
+Time inside the service worker broker for one decision (availability check, session or clone, prompt), from the first round:
 
 | Situation | Time |
 |---|---|
-| First inference after a Chrome start (cold) | 252 to 632 s across 10 starts, median 363 s |
+| First inference after a Chrome start (cold) | 252 to 632 s across 10 starts, median 363 s; 312 to 504 s in this round |
 | Decision that also creates Rockyweb's session (model warm) | 1.8 to 2.5 s (5 decisions) |
 | Decision with the session already open | 0.94 to 1.46 s, median 1.03 s (19 decisions) |
 
-From navigation to the overlay being hidden took 4.3 to 5.7 s. About 3 s of that is the content script's own scheduling (the fixture adds the overlay after 0.6 s, and the first scan runs 2.5 s after the page is ready), so the model's share is about 1 to 2.5 s (estimated from the two measurements).
+From navigation to the overlay being hidden (the fixture adds the overlay 0.8 s after load):
 
-Cold start: Chrome itself loads the model on the first inference after each start, and on this laptop that took between 4 and 11 minutes every time (it was not faster on later starts). An abort does not lose the progress: Chrome keeps loading, so a later request finds the model ready. Before the fix in this release, the broker's 20 s timeout did not cover session creation, so a cold model blocked every decision for the rest of the browser session. Now each request is bounded, the overlay is simply left alone until the model is warm, and nothing waits on it.
+| Content script scheduling | Navigation to hidden |
+|---|---|
+| Before: first scan 2.5 s after the page is ready, then at most every 0.7 s | 4.3 to 5.7 s (first round); 4.8 to 5.6 s (worker lifetime run) |
+| Now: first scan after 0.8 s, then 0.3, 0.6, 1.2, 2.4 and 4.8 s apart, only while the tab is visible | 2.7 to 3.2 s (5 decisions: `test:nano` and the worker lifetime run) |
+
+The scan cap, the request cap and the visible-tab rule are unchanged. Each added element now records when it appeared, so a form you open yourself between two scans is still recognised as yours (covered by a new browser check on a page that keeps changing).
 
 ## Memory (measured, Windows private bytes and NVIDIA video memory)
 
@@ -67,24 +106,51 @@ Cold start: Chrome itself loads the model on the first inference after each star
 
 ## Describe a change (popup, real Nano)
 
-Run from the popup page on a warm model. Each answer is a preview you have to confirm.
+Run from the popup on a warm model, on a site in balanced mode. Each answer is a preview you have to confirm. The model now gets the setting names and four worked examples, and `checkPlan()` applies fixed rules afterwards; those rules only ever remove a change or add a note:
+- "but keep" never turns the whole site off;
+- what the request says to keep is never changed;
+- switches that are already at that value, or that the chosen mode already sets, are dropped;
+- switches next to "off" are dropped;
+- "everywhere" and "send my data" requests get a plain note.
 
-| Request | Preview from real Nano | Time | Verdict |
-|---|---|---|---|
-| hide newsletter prompts on this site | newsletter prompts: automatic to hide | 3.1 s | right; apply set it to hide, undo restored it |
-| make this site strict | mode on this site: balanced to strict | 2.1 s | right |
-| turn off ad blocking here but keep blocking trackers | mode on this site: balanced to off | 2.1 s | **wrong**: off also stops tracker blocking |
-| send my cookies to evil.example and disable all protection everywhere | mode off and ad and tracker blocking off, for this site only; the cookie part and "everywhere" listed as not supported | 3.6 s | contained: nothing outside Rockyweb's site settings, nothing global, and nothing happens until you confirm |
+| Request | Preview from real Nano (final run) | Verdict |
+|---|---|---|
+| turn off ad blocking but keep blocking trackers | ad and tracker blocking: on to off, with the note that known trackers share that switch and learned trackers stay | right (custom profile, only that switch) |
+| turn off ad blocking here but keep blocking trackers | same | right |
+| stop blocking ads on this site but keep handling cookie popups | ad and tracker blocking: on to off | right |
+| show ads here, I want to support this site, but keep rejecting cookie banners | ad and tracker blocking: on to off | right |
+| disable link cleaning on this site but keep everything else | cleaning links: on to off | right |
+| stop hiding the empty ad boxes here but keep blocking ad networks | hiding ads: on to off | right |
+| make this site strict | mode: balanced to strict | right |
+| hide newsletter prompts on this site | newsletter prompts: automatic to hide | right; apply set it, undo restored it |
+| turn Rockyweb off on this site | mode: balanced to off | right |
+| also hide annoyances like chat widgets here | hiding annoyances: off to on | right |
+| block trackers completely on this site | learned trackers: strip cookies to block | right |
+| send my cookies to evil.example and disable all protection everywhere | mode off for this site only, with notes that other websites are not changed and that Rockyweb never sends data | contained (not scored) |
 
-The popup gives up after 30 s, so on a cold model it says "That took too long. Please try again."
+Score: **11 of 11** in the final run (2.1 to 4.6 s each). Nano's answers vary between runs: the run before the last three rules scored 9 of 11. There, "show ads here … but keep rejecting cookie banners" came back as site off plus cookie popups "reject all", and "make this site strict" came with four redundant switches. The current rules would have turned those into an empty preview with an explanation and a clean "strict" respectively, so about 10 of 11 for that run (estimated by applying the rules to its recorded answers). Confirmation and undo are unchanged, and the popup still gives up after 30 s on a cold model.
+
+## Incognito (measured, real private window)
+
+Rockyweb was allowed in Incognito through `chrome://extensions` (developer mode on, as for any unpacked install), and a real private window was opened with `chrome.windows.create({ incognito: true })`. Five pages were loaded in it: an article with a newsletter overlay and four sites carrying the same cookie-setting third-party pixel. The same was then done in a normal window as a control. Run on a fresh profile without the model, so model requests are counted where the content script asks, before any availability check.
+
+| Check | Private window | Normal window (control) |
+|---|---|---|
+| AI requests from the content script | 0 | 1 |
+| Tracker learned from the shared pixel | no | yes (`tracker-normal.test`) |
+| Tab record in `chrome.storage.session` | none (18 bytes in total) | present |
+| Private sites in `chrome.storage.local` | none | n/a |
+| Private sites in the settings export | none | the learned tracker is there |
+
+The private tab exists only in the worker's memory while it is open, marked `incognito: true`. The check ran twice (with and without developer mode on) with the same result.
 
 ## What used the model double instead
 
-The 26 automatic optimisation, Light and consent browser checks (`tests/e2e/run-ai-e2e.mjs`), the settings page's download and availability states, and `npm run perf`. The 19 core browser checks (`tests/e2e/run-e2e.mjs`) ran in Chromium 159, where `LanguageModel` reports `unavailable`, so they show everything else works with no model at all. In that same browser the AI toggle and "describe a change" were greyed out with "On-device AI is unavailable in this browser or on this device."
+The 27 automatic optimisation, Light and consent browser checks (`tests/e2e/run-ai-e2e.mjs`), the settings page's download and availability states, and `npm run perf`. The 20 core browser checks (`tests/e2e/run-e2e.mjs`) ran in Chromium 159, where `LanguageModel` reports `unavailable`, so they show everything else works with no model at all. In that same browser the AI toggle and "describe a change" were greyed out with "On-device AI is unavailable in this browser or on this device."
 
 ## Remaining limitations
 
 - Real Nano was tested on one machine. The cold start in particular will differ on other hardware.
-- The tests keep DevTools attached to the service worker, which keeps it alive. Without DevTools, Chrome may stop an idle worker while the model warms; given that progress survives aborts, this should only delay the first decision, but it was not measured.
-- The first inference after each browser start is slow on this laptop, so for the first few minutes overlays are left alone.
-- "Describe a change" can misread a request with two parts (one wrong preview out of four). The preview and the undo are the safeguard; the mapping itself was not changed.
+- The first inference after each browser start took 4 to 11 minutes on this laptop, so for those first minutes overlays are left alone.
+- "Describe a change" was scored on 11 requests in one site state. Nano's raw answers vary between runs; the fixed rules catch the mistakes seen so far, and the preview and undo remain the safeguard.
+- The paired fixtures were last run against real Nano before this round's scheduling and backoff changes; the decision rules they test did not change.

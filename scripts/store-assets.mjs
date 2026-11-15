@@ -82,6 +82,8 @@ try {
   }
   await ext.evaluate((data) => chrome.runtime.sendMessage({ action: 'importSettings', payload: { data } }), JSON.stringify({
     globalDefaultTier: 'balanced',
+    // The optional confirmation note (off for new installs) makes the answered popup visible.
+    globalCustomConfig: { showToastBadge: true },
     siteProfiles: {
       'github.com': { tier: 'consent_only', updatedAt: now - 86400e3 },
       'thedailybark.test': { tier: null, updatedAt: now - 3600e3, customCosmeticSelectors: ['div.promo-banner'] },

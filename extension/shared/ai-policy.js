@@ -151,6 +151,8 @@
     '{"op":"setting","key": "adBlockNetwork"|"cosmeticFiltering"|"aggressiveFiltering"|"stripUrlParams","value": true|false}',
     '{"op":"setting","key": "trackerHeuristicMode","value": "off"|"cookie_strip"|"hard_block"}',
     '{"op":"setting","key": "consentMode","value": "off"|"custom_categories"|"strict_reject"}',
+    'Names: ad blocking = adBlockNetwork, hiding ads = cosmeticFiltering, annoyances = aggressiveFiltering, link cleaning = stripUrlParams, trackers = trackerHeuristicMode, cookie popups = consentMode.',
+    'Use site_mode "off" only when the user wants all protection off for this website. To turn off one thing, change only that setting.',
     'Only include changes the user asked for. If the user asks to keep something as it is, do not change it.',
     'Put any part of the request you cannot express with these changes in "unsupported", in a few plain words.',
     'Answer with JSON only: {"changes": [...], "unsupported": [...]}.'
@@ -176,6 +178,69 @@
     },
     required: ['changes', 'unsupported']
   };
+
+  // Worked examples, sent as earlier turns of the plan session.
+  const PLAN_EXAMPLES = [
+    ['turn off ad blocking but keep cleaning links', { changes: [{ op: 'setting', key: 'adBlockNetwork', value: false }], unsupported: [] }],
+    ['stop hiding ads on this site, keep everything else', { changes: [{ op: 'setting', key: 'cosmeticFiltering', value: false }], unsupported: [] }],
+    ['turn Rockyweb off completely here', { changes: [{ op: 'site_mode', value: 'off' }], unsupported: [] }],
+    ['reject every cookie popup and block trackers', { changes: [{ op: 'setting', key: 'consentMode', value: 'strict_reject' }, { op: 'setting', key: 'trackerHeuristicMode', value: 'hard_block' }], unsupported: [] }]
+  ];
+  const planRequest = (text) => `Request about this website: ${JSON.stringify(text)}`;
+  const planInitialPrompts = () => [{ role: 'system', content: PLAN_SYSTEM_PROMPT }]
+    .concat(...PLAN_EXAMPLES.map(([ask, answer]) => [{ role: 'user', content: planRequest(ask) }, { role: 'assistant', content: JSON.stringify(answer) }]));
+
+  const KEEP_RE = /\b(keep|keeping|except|apart from|but not|still)\b/i;
+  const EVERYTHING_RE = /\b(everything(?! else)|all protection|completely|entirely|rockyweb off)\b/i;
+
+  // Words that name a switch, for "... but keep <these>".
+  const KEEP_NAMES = [
+    [/cookie|consent|banner/i, 'consentMode'],
+    [/tracker/i, 'trackerHeuristicMode'],
+    [/\blinks?\b|\burls?\b/i, 'stripUrlParams'],
+    [/annoyance|chat widget/i, 'aggressiveFiltering'],
+    [/\bad (box|boxes|slot|slots|space)|hiding ads|hide ads/i, 'cosmeticFiltering'],
+    [/ad blocking|ad network|block(ing)? ads/i, 'adBlockNetwork']
+  ];
+
+  // Deterministic checks on the model's plan against the request's own words. They only ever
+  // remove changes or add notes. cfg is the site's current configuration, when known.
+  function checkPlan(plan, text, cfg) {
+    if (!plan) return plan;
+    const request = String(text || '');
+    let changes = plan.changes;
+    const notes = [];
+    // "Turn X off but keep Y" never switches the whole site off.
+    if (KEEP_RE.test(request) && !EVERYTHING_RE.test(request) && changes.some((c) => c.op === 'site_mode' && (c.value === 'off' || c.value === 'consent_only'))) {
+      changes = changes.filter((c) => c.op !== 'site_mode');
+      notes.push('turning the whole site off would also stop what you asked to keep');
+    }
+    const mode = changes.find((c) => c.op === 'site_mode');
+    // Off stops everything on the site, so switches next to it mean nothing.
+    if (mode && mode.value === 'off') changes = changes.filter((c) => c.op !== 'setting');
+    // Drop switches already at that value (after a mode change: the value the mode sets).
+    const presets = RW.TIER_PRESETS;
+    const ref = mode ? (presets && presets[mode.value]) : cfg;
+    if (ref) changes = changes.filter((c) => c.op !== 'setting' || ref[c.key] !== c.value);
+    // What the request asks to keep is never changed.
+    const keepAt = request.search(KEEP_RE);
+    if (keepAt >= 0) {
+      const keep = request.slice(keepAt);
+      const kept = changes.filter((c) => c.op === 'setting' && KEEP_NAMES.some(([re, key]) => key === c.key && re.test(keep)));
+      if (kept.length) {
+        changes = changes.filter((c) => !kept.includes(c));
+        notes.push(`changing ${kept.map((c) => PLAN_SETTINGS[c.key].label).join(' or ')}, which you asked to keep`);
+      }
+    }
+    // One switch covers ads and known trackers.
+    if (/tracker/i.test(request) && changes.some((c) => c.op === 'setting' && c.key === 'adBlockNetwork' && c.value === false) &&
+      !changes.some((c) => c.key === 'trackerHeuristicMode')) {
+      notes.push('known trackers share the ad blocking switch, so they are allowed too; learned trackers stay as they are');
+    }
+    if (/\b(everywhere|every ?(web)?site|all (web)?sites|globally)\b/i.test(request)) notes.push('changes on other websites; this only changes this website');
+    if (/\b(send|upload|share|forward|post)\b/i.test(request) && /\b(cookies?|data|history|passwords?|details)\b/i.test(request)) notes.push('sending your data anywhere; Rockyweb never does');
+    return { changes, unsupported: notes.concat(plan.unsupported).slice(0, 6) };
+  }
 
   function parsePlan(text) {
     if (typeof text !== 'string' || text.length > 4000) return null;
@@ -223,6 +288,9 @@
     parseDecision,
     decisionKey,
     parsePlan,
+    checkPlan,
+    planRequest,
+    planInitialPrompts,
     describePlan
   });
 

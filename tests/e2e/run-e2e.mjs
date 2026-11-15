@@ -228,6 +228,15 @@ try {
     assert.equal(st.config.tier, 'balanced');
   });
 
+  await check('popup renders the page without stray "null" or "undefined" text', async () => {
+    const tabId = await ext.evaluate((u) => chrome.tabs.query({}).then((ts) => ts.find((t) => (t.url || '').startsWith(u)).id), at('cmp.test', '/'));
+    const pop = await context.newPage();
+    await pop.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}`);
+    const text = await poll(() => pop.evaluate(() => (document.querySelector('.stats') ? document.body.innerText : null)), 5000);
+    await pop.close();
+    assert.ok(!/\b(null|undefined)\b/.test(text), `popup text: ${text}`);
+  });
+
   await check('Off tier: dynamic allowAllRequests bypass lets the ad load, nothing hidden', async () => {
     const r = await msg(ACTIONS.SET_SITE_TIER, { siteKey: 'off.test', tier: 'off' });
     assert.equal(r.ok, true);

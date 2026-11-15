@@ -35,7 +35,7 @@ ONE SWITCH PER SITE
 Every site gets a simple on/off switch and five modes: off, consent only, balanced (the default), strict, or your own custom mix. Something broken? Turn the site down a notch and carry on. The gear icon opens per-engine switches and an allow / cookies / block choice for every third-party domain on the page.
 
 QUIETLY OPTIMISED FOR EACH SITE (OPTIONAL)
-Turn on automatic optimisation once and Rockyweb uses Chrome's on-device AI to make small, reversible adjustments where context matters, such as hiding an unsolicited newsletter overlay on an article while leaving sign-in and checkout forms alone. It never interrupts you, everything can be undone from the toolbar, and nothing leaves your device. Needs a computer that supports Chrome's built-in AI; everything else works without it.
+Turn on automatic optimisation once and Rockyweb uses Chrome's on-device AI on articles you are reading: it can hide an unsolicited newsletter overlay that covers the story. On every other kind of page (shops, sign-in, checkout, search, apps) the AI is never asked and overlays are left as they are. It never interrupts you, every change can be undone from the toolbar, and nothing leaves your device. Needs a computer that supports Chrome's built-in AI; the first article after Chrome starts can take a few minutes while Chrome loads the model, and until then overlays are simply left alone. Everything else works without it.
 
 LIGHT MODE
 Uses less of your computer. Blocking, link cleaning and your site settings stay; tracker learning, AI and deep page scanning pause.

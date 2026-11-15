@@ -199,13 +199,13 @@ try {
     for (const end = Date.now() + waitMs; Date.now() < end;) {
       state = await overlay();
       const s = await stats();
-      if (state === 'hidden' || (state === 'shown' && s.timeouts + s.failures + s.invalid > before.timeouts + before.failures + before.invalid)) break;
+      if (state === 'hidden' || (state === 'shown' && s.timeouts + s.failures + s.invalid + s.warming > before.timeouts + before.failures + before.invalid + before.warming)) break;
       await sleep(250);
     }
     const after = await stats();
     return {
       state, seconds: Math.round((Date.now() - t0) / 100) / 10, modelCalls: after.prompts - before.prompts,
-      timeouts: after.timeouts - before.timeouts, pending: after.pending
+      timeouts: after.timeouts - before.timeouts, warming: after.warming - before.warming, pending: after.pending
     };
   }
 
@@ -213,6 +213,9 @@ try {
   //    bounded by the 20 s broker timeout and leave the overlay alone, never hang the queue.
   const cold = await article('cold.test', 45000);
   step('cold model: article overlay', cold);
+  // The next article within a minute is answered at once ("model_warming"), without waiting again.
+  const backoff = await article('cold2.test', 30000);
+  step('cold model: next article during the backoff', backoff);
 
   // 2. Measured warm-up, done by this harness (not by Rockyweb) so the next checks see a ready model.
   const warm = await sw.evaluate(async () => {
@@ -246,7 +249,8 @@ try {
 
   const coldOk = cold.state !== 'absent' && cold.pending === 0 && (cold.state === 'hidden' || cold.timeouts >= 1);
   const warmOk = warmArticle.state === 'hidden' && warmArticle.modelCalls === 1;
-  report.result = coldOk && warmOk && plainCalls === 0 && released ? 'pass' : 'check_report';
+  const backoffOk = cold.state === 'hidden' || (backoff.state === 'shown' && backoff.warming === 1 && backoff.modelCalls === 0 && backoff.seconds < 10);
+  report.result = coldOk && backoffOk && warmOk && plainCalls === 0 && released ? 'pass' : 'check_report';
   console.log(`
 result: ${report.result}`);
   save();
