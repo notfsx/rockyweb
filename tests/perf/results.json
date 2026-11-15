@@ -1,0 +1,518 @@
+{
+  "date": "2026-11-15T02:16:26.395Z",
+  "machine": "4 CPUs, 16 GB",
+  "summary": [
+    {
+      "name": "Light",
+      "runs": 3,
+      "executeScript": 5,
+      "insertCSS": 5,
+      "thirdPartyEvents": 0,
+      "learnCalls": 0,
+      "modelCalls": 0,
+      "headerObservation": false,
+      "cpuAll": 1.73,
+      "cpuExt": 0.03,
+      "rssMb": 1655,
+      "pageTaskMs": {
+        "/article": 36,
+        "/plain": 25,
+        "/checkout/": 31,
+        "/banner": 27,
+        "/busy": 168
+      },
+      "plainPageModelCalls": "see the AI e2e suite (zero by assertion)",
+      "articleOverlayHidden": false,
+      "checkoutOverlayHidden": false
+    },
+    {
+      "name": "Full, AI off",
+      "runs": 3,
+      "executeScript": 100,
+      "insertCSS": 5,
+      "thirdPartyEvents": 70,
+      "learnCalls": 20,
+      "modelCalls": 0,
+      "headerObservation": true,
+      "cpuAll": 2.17,
+      "cpuExt": 0.16,
+      "rssMb": 1681,
+      "pageTaskMs": {
+        "/article": 55,
+        "/plain": 42,
+        "/checkout/": 48,
+        "/banner": 45,
+        "/busy": 195
+      },
+      "plainPageModelCalls": "see the AI e2e suite (zero by assertion)",
+      "articleOverlayHidden": false,
+      "checkoutOverlayHidden": false
+    },
+    {
+      "name": "Full, auto-optimisation (model double)",
+      "runs": 3,
+      "executeScript": 100,
+      "insertCSS": 5,
+      "thirdPartyEvents": 70,
+      "learnCalls": 20,
+      "modelCalls": 1,
+      "headerObservation": true,
+      "cpuAll": 2.15,
+      "cpuExt": 0.17,
+      "rssMb": 1686,
+      "pageTaskMs": {
+        "/article": 57,
+        "/plain": 41,
+        "/checkout/": 47,
+        "/banner": 45,
+        "/busy": 195
+      },
+      "plainPageModelCalls": "see the AI e2e suite (zero by assertion)",
+      "articleOverlayHidden": true,
+      "checkoutOverlayHidden": false
+    }
+  ],
+  "raw": [
+    {
+      "name": "Light",
+      "wallSeconds": 24.393,
+      "counters": {
+        "executeScript": 5,
+        "insertCSS": 5,
+        "thirdPartyEvents": 0,
+        "learnCalls": 0,
+        "navigations": 5,
+        "modelCalls": 0,
+        "brokerPrompts": 0,
+        "headerListeners": false
+      },
+      "perPage": {
+        "/article": {
+          "scriptMs": 6,
+          "taskMs": 44,
+          "heapMb": 1.6,
+          "overlayHidden": false
+        },
+        "/plain": {
+          "scriptMs": 3,
+          "taskMs": 34,
+          "heapMb": 1.5,
+          "overlayHidden": null
+        },
+        "/checkout/": {
+          "scriptMs": 5,
+          "taskMs": 39,
+          "heapMb": 1.6,
+          "overlayHidden": false
+        },
+        "/banner": {
+          "scriptMs": 5,
+          "taskMs": 36,
+          "heapMb": 1.5,
+          "overlayHidden": null
+        },
+        "/busy": {
+          "scriptMs": 15,
+          "taskMs": 168,
+          "heapMb": 1.6,
+          "overlayHidden": null
+        }
+      },
+      "cpuSecondsAllChrome": 2.03,
+      "cpuSecondsExtensionProcess": 0.05,
+      "rssMbAllChrome": 1654
+    },
+    {
+      "name": "Full, AI off",
+      "wallSeconds": 24.321,
+      "counters": {
+        "executeScript": 100,
+        "insertCSS": 5,
+        "thirdPartyEvents": 70,
+        "learnCalls": 20,
+        "navigations": 5,
+        "modelCalls": 0,
+        "brokerPrompts": 0,
+        "headerListeners": true
+      },
+      "perPage": {
+        "/article": {
+          "scriptMs": 17,
+          "taskMs": 68,
+          "heapMb": 2.1,
+          "overlayHidden": false
+        },
+        "/plain": {
+          "scriptMs": 10,
+          "taskMs": 42,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/checkout/": {
+          "scriptMs": 12,
+          "taskMs": 50,
+          "heapMb": 2,
+          "overlayHidden": false
+        },
+        "/banner": {
+          "scriptMs": 8,
+          "taskMs": 46,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/busy": {
+          "scriptMs": 28,
+          "taskMs": 195,
+          "heapMb": 2.1,
+          "overlayHidden": null
+        }
+      },
+      "cpuSecondsAllChrome": 2.17,
+      "cpuSecondsExtensionProcess": 0.17,
+      "rssMbAllChrome": 1681
+    },
+    {
+      "name": "Full, auto-optimisation (model double)",
+      "wallSeconds": 24.304,
+      "counters": {
+        "executeScript": 100,
+        "insertCSS": 5,
+        "thirdPartyEvents": 70,
+        "learnCalls": 20,
+        "navigations": 5,
+        "modelCalls": 1,
+        "brokerPrompts": 1,
+        "headerListeners": true
+      },
+      "perPage": {
+        "/article": {
+          "scriptMs": 17,
+          "taskMs": 57,
+          "heapMb": 2.2,
+          "overlayHidden": true
+        },
+        "/plain": {
+          "scriptMs": 10,
+          "taskMs": 41,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/checkout/": {
+          "scriptMs": 16,
+          "taskMs": 55,
+          "heapMb": 2.1,
+          "overlayHidden": false
+        },
+        "/banner": {
+          "scriptMs": 9,
+          "taskMs": 43,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/busy": {
+          "scriptMs": 26,
+          "taskMs": 186,
+          "heapMb": 1.5,
+          "overlayHidden": null
+        }
+      },
+      "cpuSecondsAllChrome": 2.08,
+      "cpuSecondsExtensionProcess": 0.18,
+      "rssMbAllChrome": 1686
+    },
+    {
+      "name": "Light",
+      "wallSeconds": 24.303,
+      "counters": {
+        "executeScript": 5,
+        "insertCSS": 5,
+        "thirdPartyEvents": 0,
+        "learnCalls": 0,
+        "navigations": 5,
+        "modelCalls": 0,
+        "brokerPrompts": 0,
+        "headerListeners": false
+      },
+      "perPage": {
+        "/article": {
+          "scriptMs": 4,
+          "taskMs": 35,
+          "heapMb": 1.6,
+          "overlayHidden": false
+        },
+        "/plain": {
+          "scriptMs": 3,
+          "taskMs": 25,
+          "heapMb": 1.5,
+          "overlayHidden": null
+        },
+        "/checkout/": {
+          "scriptMs": 4,
+          "taskMs": 30,
+          "heapMb": 1.6,
+          "overlayHidden": false
+        },
+        "/banner": {
+          "scriptMs": 3,
+          "taskMs": 27,
+          "heapMb": 1.5,
+          "overlayHidden": null
+        },
+        "/busy": {
+          "scriptMs": 15,
+          "taskMs": 165,
+          "heapMb": 1.6,
+          "overlayHidden": null
+        }
+      },
+      "cpuSecondsAllChrome": 1.73,
+      "cpuSecondsExtensionProcess": 0.03,
+      "rssMbAllChrome": 1655
+    },
+    {
+      "name": "Full, AI off",
+      "wallSeconds": 24.338,
+      "counters": {
+        "executeScript": 100,
+        "insertCSS": 5,
+        "thirdPartyEvents": 70,
+        "learnCalls": 20,
+        "navigations": 5,
+        "modelCalls": 0,
+        "brokerPrompts": 0,
+        "headerListeners": true
+      },
+      "perPage": {
+        "/article": {
+          "scriptMs": 15,
+          "taskMs": 55,
+          "heapMb": 2.1,
+          "overlayHidden": false
+        },
+        "/plain": {
+          "scriptMs": 9,
+          "taskMs": 47,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/checkout/": {
+          "scriptMs": 12,
+          "taskMs": 48,
+          "heapMb": 2,
+          "overlayHidden": false
+        },
+        "/banner": {
+          "scriptMs": 8,
+          "taskMs": 42,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/busy": {
+          "scriptMs": 25,
+          "taskMs": 187,
+          "heapMb": 2.1,
+          "overlayHidden": null
+        }
+      },
+      "cpuSecondsAllChrome": 2.25,
+      "cpuSecondsExtensionProcess": 0.16,
+      "rssMbAllChrome": 1681
+    },
+    {
+      "name": "Full, auto-optimisation (model double)",
+      "wallSeconds": 24.364,
+      "counters": {
+        "executeScript": 100,
+        "insertCSS": 5,
+        "thirdPartyEvents": 70,
+        "learnCalls": 20,
+        "navigations": 5,
+        "modelCalls": 1,
+        "brokerPrompts": 1,
+        "headerListeners": true
+      },
+      "perPage": {
+        "/article": {
+          "scriptMs": 17,
+          "taskMs": 62,
+          "heapMb": 2.2,
+          "overlayHidden": true
+        },
+        "/plain": {
+          "scriptMs": 10,
+          "taskMs": 42,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/checkout/": {
+          "scriptMs": 12,
+          "taskMs": 47,
+          "heapMb": 2.1,
+          "overlayHidden": false
+        },
+        "/banner": {
+          "scriptMs": 10,
+          "taskMs": 46,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/busy": {
+          "scriptMs": 31,
+          "taskMs": 202,
+          "heapMb": 1.5,
+          "overlayHidden": null
+        }
+      },
+      "cpuSecondsAllChrome": 2.28,
+      "cpuSecondsExtensionProcess": 0.17,
+      "rssMbAllChrome": 1687
+    },
+    {
+      "name": "Light",
+      "wallSeconds": 24.28,
+      "counters": {
+        "executeScript": 5,
+        "insertCSS": 5,
+        "thirdPartyEvents": 0,
+        "learnCalls": 0,
+        "navigations": 5,
+        "modelCalls": 0,
+        "brokerPrompts": 0,
+        "headerListeners": false
+      },
+      "perPage": {
+        "/article": {
+          "scriptMs": 5,
+          "taskMs": 36,
+          "heapMb": 1.6,
+          "overlayHidden": false
+        },
+        "/plain": {
+          "scriptMs": 3,
+          "taskMs": 22,
+          "heapMb": 1.5,
+          "overlayHidden": null
+        },
+        "/checkout/": {
+          "scriptMs": 5,
+          "taskMs": 31,
+          "heapMb": 1.6,
+          "overlayHidden": false
+        },
+        "/banner": {
+          "scriptMs": 3,
+          "taskMs": 22,
+          "heapMb": 1.5,
+          "overlayHidden": null
+        },
+        "/busy": {
+          "scriptMs": 15,
+          "taskMs": 168,
+          "heapMb": 1.6,
+          "overlayHidden": null
+        }
+      },
+      "cpuSecondsAllChrome": 1.73,
+      "cpuSecondsExtensionProcess": 0.03,
+      "rssMbAllChrome": 1657
+    },
+    {
+      "name": "Full, AI off",
+      "wallSeconds": 24.324,
+      "counters": {
+        "executeScript": 100,
+        "insertCSS": 5,
+        "thirdPartyEvents": 70,
+        "learnCalls": 20,
+        "navigations": 5,
+        "modelCalls": 0,
+        "brokerPrompts": 0,
+        "headerListeners": true
+      },
+      "perPage": {
+        "/article": {
+          "scriptMs": 16,
+          "taskMs": 50,
+          "heapMb": 2.1,
+          "overlayHidden": false
+        },
+        "/plain": {
+          "scriptMs": 9,
+          "taskMs": 40,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/checkout/": {
+          "scriptMs": 12,
+          "taskMs": 47,
+          "heapMb": 2,
+          "overlayHidden": false
+        },
+        "/banner": {
+          "scriptMs": 9,
+          "taskMs": 45,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/busy": {
+          "scriptMs": 29,
+          "taskMs": 199,
+          "heapMb": 2.1,
+          "overlayHidden": null
+        }
+      },
+      "cpuSecondsAllChrome": 2.11,
+      "cpuSecondsExtensionProcess": 0.15,
+      "rssMbAllChrome": 1689
+    },
+    {
+      "name": "Full, auto-optimisation (model double)",
+      "wallSeconds": 24.35,
+      "counters": {
+        "executeScript": 100,
+        "insertCSS": 5,
+        "thirdPartyEvents": 70,
+        "learnCalls": 20,
+        "navigations": 5,
+        "modelCalls": 1,
+        "brokerPrompts": 1,
+        "headerListeners": true
+      },
+      "perPage": {
+        "/article": {
+          "scriptMs": 17,
+          "taskMs": 57,
+          "heapMb": 2.2,
+          "overlayHidden": true
+        },
+        "/plain": {
+          "scriptMs": 11,
+          "taskMs": 41,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/checkout/": {
+          "scriptMs": 13,
+          "taskMs": 46,
+          "heapMb": 2.1,
+          "overlayHidden": false
+        },
+        "/banner": {
+          "scriptMs": 10,
+          "taskMs": 45,
+          "heapMb": 1.8,
+          "overlayHidden": null
+        },
+        "/busy": {
+          "scriptMs": 28,
+          "taskMs": 195,
+          "heapMb": 1.5,
+          "overlayHidden": null
+        }
+      },
+      "cpuSecondsAllChrome": 2.15,
+      "cpuSecondsExtensionProcess": 0.16,
+      "rssMbAllChrome": 1686
+    }
+  ]
+}

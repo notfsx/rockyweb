@@ -136,6 +136,14 @@
 
   const FONT = '"Lexend Deca", ui-rounded, system-ui, -apple-system, "Segoe UI", sans-serif';
 
+  // Most recent real user gesture. Dialogues that appear right after one were opened by the user.
+  const Activity = { at: 0 };
+  for (const type of ['pointerdown', 'keydown']) {
+    window.addEventListener(type, (e) => { if (e.isTrusted) Activity.at = Date.now(); }, { capture: true, passive: true });
+  }
+  const USER_OPENED_WINDOW = 2500;
+  const recentlyUsed = () => Date.now() - Activity.at < USER_OPENED_WINDOW;
+
   // ---------------------------------------------------------------- toast
 
   const Toast = (() => {
@@ -270,6 +278,9 @@
     let interval = 0;
     const failedRules = new Set();
     const failedContainers = new WeakSet();
+    const userOpened = new Set();
+    let bounded = false;
+    let timers = [];
 
     function ruleRoot(rule) {
       if (!rule.shadowHost) return document;
@@ -402,14 +413,15 @@
       if (!settingsBtn) return false;
       press(settingsBtn.el || settingsBtn);
       await sleep(700);
+      // The toggles may be in the banner itself or in a preferences dialogue it just opened.
+      const hasToggles = (el) => qsAll(el, 'input[type="checkbox"], [role="switch"], [role="checkbox"]').some((t) => !t.disabled);
       const scopeFor = () => {
-        if (rule && rule.toggleScope) {
-          const s = qsAll(root, rule.toggleScope).find(isVisible);
-          if (s) return s;
-        }
-        if (container.isConnected && isVisible(container)) return container;
-        return qsAll(document, '[role="dialog"], [aria-modal="true"], dialog[open]')
-          .find((d) => isVisible(d) && RW.CONSENT_COOKIE_TEXT_RE.test((d.innerText || '').slice(0, 4000))) || null;
+        const options = [];
+        if (rule && rule.toggleScope) options.push(...qsAll(root, rule.toggleScope));
+        if (container.isConnected) options.push(container);
+        options.push(...qsAll(document, '[role="dialog"], [aria-modal="true"], dialog[open]')
+          .filter((d) => RW.CONSENT_COOKIE_TEXT_RE.test((d.innerText || '').slice(0, 4000))));
+        return options.find((el) => isVisible(el) && hasToggles(el)) || null;
       };
       const scope = await waitFor(scopeFor, 2500);
       if (!scope || !applyToggles(scope, categories)) return false;
@@ -521,10 +533,15 @@
         const match = detectKnown();
         if (match) {
           if (match.rule.api && IS_TOP && apiResult === null) return; // wait for the API attempt
+          // A banner that appears straight after a click was opened by the user: leave it alone.
+          if (recentlyUsed()) { userOpened.add(match.rule.id); return; }
+          if (userOpened.has(match.rule.id)) return;
           await handleKnown(match);
           return;
         }
+        if (bounded) return; // Light mode: recognised platforms only
         if (IS_TOP && apiResult === null && Date.now() - startedAt < 2500) return;
+        if (recentlyUsed()) return;
         const generic = detectGeneric();
         if (generic) await handleGeneric(generic);
       } catch (_) {
@@ -543,17 +560,30 @@
     function stop() {
       if (observer) { observer.disconnect(); observer = null; }
       if (interval) { clearInterval(interval); interval = 0; }
+      for (const t of timers) clearTimeout(t);
+      timers = [];
     }
 
-    function start() {
-      if (!intent || (!IS_TOP && !CONSENT_HOST)) return;
+    // Stop all further work on this page (Light switched on, consent turned off, or a decision exists).
+    function halt() {
+      handled = true;
+      stop();
+    }
+
+    function start(depth) {
+      if (!intent || (!IS_TOP && !CONSENT_HOST) || depth === 'off') return;
+      bounded = depth === 'bounded';
+      if (bounded && !IS_TOP) return;
       startedAt = Date.now();
-      stopAt = startedAt + 30000;
+      stopAt = startedAt + (bounded ? 6000 : 30000);
 
       if (IS_TOP) {
         send(A.RUN_CMP_API).then((resp) => {
           apiResult = (resp && resp.ok && resp.result) || { handled: false, reason: 'unavailable' };
-          if (apiResult.handled && !handled) {
+          if (handled) return;
+          // The platform says the user already answered: never touch its dialogues on this page.
+          if (apiResult.reason === 'already_decided') { halt(); return; }
+          if (apiResult.handled) {
             const rule = RULES.find((r) => r.name === apiResult.cmp);
             finish({ cmp: apiResult.cmp, method: 'api', decision: apiResult.decision || intent.decision },
               rule ? hideTargetsForRule(rule) : () => [], rule ? rule.scrollClasses : []);
@@ -568,6 +598,11 @@
       const begin = () => {
         if (handled) return;
         schedule();
+        if (bounded) {
+          // Three cheap checks, no observer and no retries after that.
+          timers = [1500, 4000].map((ms) => setTimeout(schedule, ms));
+          return;
+        }
         observer = new MutationObserver(schedule);
         observer.observe(document.documentElement, { childList: true, subtree: true });
         interval = setInterval(() => (Date.now() > stopAt ? stop() : schedule()), 1000);
@@ -590,7 +625,239 @@
       if (info.showToast) Toast.show('Cookie popup handled', `${describeDecision(info.decision, info.method)} · ${info.cmp}`);
     }
 
-    return { start, followup };
+    return { start, followup, halt };
+  })();
+
+  // ---------------------------------------------------------------- automatic optimisation (newsletter overlays)
+  // Finds overlays cheaply, sends compact signals (never form values, cookies or query strings) for a
+  // decision, rechecks everything before acting, and only ever hides the one element on this page.
+
+  const Optimiser = (() => {
+    const MAX_SCANS = 6;
+    const MAX_REQUESTS = 3;
+    const seen = new WeakSet();
+    const firstSeen = new WeakMap();
+    const applied = new Map(); // adjustment id -> { el, prev, prevPriority }
+    let generation = 0;
+    let observer = null;
+    let scanTimer = 0;
+    let scans = 0;
+    let requests = 0;
+    let candidateCounter = 0;
+    let running = false;
+
+    const PATH_ACCOUNT = /(^|\/)(log-?in|sign-?in|signin|account|my-account|profile|register|sign-?up|password|auth)(\/|$|\.)/i;
+    const PATH_CHECKOUT = /(^|\/)(checkout|cart|basket|payment|order|billing)(\/|$|\.)/i;
+    const PATH_SEARCH = /(^|\/)search(\/|$)/i;
+    const VENDOR_RE = new RegExp(RW.AI_VENDORS.join('|'), 'i');
+    const WORDS = [
+      ['newsletter', /newsletter|mailing list|in your inbox|weekly email|daily email/i],
+      ['subscribe', /subscribe|sign up|join (us|our|the)|get updates/i],
+      ['discount', /% ?off|discount|coupon|promo code/i],
+      ['sign_in', /sign in|log ?in|password|forgot/i],
+      ['account', /my account|create (an )?account|your account/i],
+      ['checkout', /checkout|basket|your cart|place order/i],
+      ['payment', /card number|payment|billing/i],
+      ['cookie', /cookie|consent/i]
+    ];
+
+    function stableToken(t) {
+      return /^[A-Za-z][\w-]{1,30}$/.test(t) && !/\d{3,}/.test(t) && !/^(css|sc|jsx|svelte|emotion|styled)-/i.test(t) &&
+        !/[a-z][A-Z].*\d|\d.*[A-Z][a-z]/.test(t);
+    }
+
+    function articleOnPage() {
+      const og = document.querySelector('meta[property="og:type"]');
+      return !!(document.querySelector('article, [itemtype*="Article"]') || (og && /article/i.test(og.getAttribute('content') || '')));
+    }
+
+    function pageKind() {
+      const path = location.pathname || '/';
+      if (PATH_ACCOUNT.test(path)) return 'account';
+      if (PATH_CHECKOUT.test(path)) return 'checkout';
+      if (PATH_SEARCH.test(path)) return 'search';
+      if (articleOnPage()) return 'article';
+      if (path === '/' || path === '') return 'home';
+      return 'other';
+    }
+
+    function isOverlay(el) {
+      for (let cur = el, i = 0; cur && cur !== document.body && i < 4; cur = cur.parentElement, i++) {
+        const p = getComputedStyle(cur).position;
+        if (p === 'fixed' || p === 'sticky') return true;
+        if (cur.tagName === 'DIALOG' && cur.open) return true;
+        if (cur.getAttribute('aria-modal') === 'true') return true;
+      }
+      return false;
+    }
+
+    function position(el) {
+      const r = el.getBoundingClientRect();
+      const vw = window.innerWidth || 1;
+      const vh = window.innerHeight || 1;
+      const w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+      const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+      const coverage = Math.round((w * h * 100) / (vw * vh));
+      let pos = 'inline';
+      if (isOverlay(el)) {
+        if (coverage >= 85) pos = 'full_screen';
+        else if (r.bottom >= vh - 4 && r.height < vh * 0.45) pos = 'bottom_bar';
+        else if (r.top <= 4 && r.height < vh * 0.3) pos = 'top_bar';
+        else if (Math.abs((r.left + r.right) / 2 - vw / 2) < vw * 0.15 && Math.abs((r.top + r.bottom) / 2 - vh / 2) < vh * 0.2) pos = 'centre_modal';
+        else pos = 'corner';
+      }
+      return { pos, coverage };
+    }
+
+    // Class names, ids and form action hosts only: enough to recognise a newsletter tool.
+    function markers(el) {
+      const parts = [el.id, String(el.className || '')];
+      for (const d of Array.from(el.querySelectorAll('[class], [id], form')).slice(0, 40)) {
+        let host = '';
+        if (d.tagName === 'FORM' && d.getAttribute('action')) { try { host = new URL(d.getAttribute('action'), location.href).hostname; } catch (_) { host = ''; } }
+        parts.push(d.id, String(d.className || ''), host);
+      }
+      return parts.join(' ');
+    }
+
+    function signals(el) {
+      const inputs = Array.from(el.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]), select, textarea')).slice(0, 30);
+      const attr = (i, a) => (i.getAttribute(a) || '').toLowerCase();
+      const isEmail = (i) => attr(i, 'type') === 'email' || /e-?mail/.test(`${attr(i, 'name')} ${attr(i, 'id')} ${attr(i, 'placeholder')} ${attr(i, 'autocomplete')}`);
+      const isPayment = (i) => /^cc-/.test(attr(i, 'autocomplete')) || /card|cvc|cvv|iban|expiry|security code/.test(`${attr(i, 'name')} ${attr(i, 'id')} ${attr(i, 'placeholder')}`);
+      const text = (el.innerText || '').slice(0, 800);
+      const vendorMatch = VENDOR_RE.exec(markers(el));
+      const heading = el.querySelector('h1, h2, h3, h4, [class*="title" i], [class*="heading" i]');
+      const { pos, coverage } = position(el);
+      const locked = [document.documentElement, document.body].some((n) => n && /hidden|clip/.test(getComputedStyle(n).overflowY));
+      const tokens = Array.from(el.classList).filter(stableToken).map((t) => t.toLowerCase()).sort().slice(0, 3);
+      const vendor = vendorMatch ? vendorMatch[0].toLowerCase() : '';
+      const sig = [vendor && `v:${vendor}`, tokens.length && `c:${tokens.join('.')}`, el.id && stableToken(el.id) && `i:${el.id.toLowerCase()}`, `n:${inputs.length}`]
+        .filter(Boolean).join('|').replace(/[^a-z0-9:|._-]/g, '').slice(0, 120);
+      const seenAt = firstSeen.get(el) || Date.now();
+      return {
+        id: `c${++candidateCounter}`,
+        signature: sig || 'n:0',
+        pageKind: pageKind(),
+        articleOnPage: articleOnPage(),
+        position: pos,
+        coverage,
+        hasEmailInput: inputs.some(isEmail),
+        inputCount: inputs.length,
+        hasPassword: inputs.some((i) => attr(i, 'type') === 'password'),
+        hasPaymentField: inputs.some(isPayment),
+        // Only whether something was typed, never what.
+        hasTypedValue: inputs.some((i) => typeof i.value === 'string' && i.value.length > 0 && !i.readOnly && !['checkbox', 'radio'].includes(attr(i, 'type'))),
+        focusInside: !!(document.activeElement && el.contains(document.activeElement) && document.activeElement !== el),
+        openedByUser: seenAt - Activity.at < USER_OPENED_WINDOW,
+        appearedAfterMs: Math.max(0, Math.round(seenAt - performance.timeOrigin)),
+        scrollLocked: locked,
+        hasCloseControl: !!el.querySelector('[aria-label*="close" i], [class*="close" i], button[title*="close" i]') || /(^|\s)[×✕](\s|$)/.test(text),
+        vendor,
+        wording: WORDS.filter(([, re]) => re.test(text)).map(([w]) => w),
+        heading: heading ? (heading.innerText || '').slice(0, 80) : ''
+      };
+    }
+
+    function candidates() {
+      const body = document.body;
+      if (!body) return [];
+      const out = new Set(Array.from(body.children).slice(0, 60));
+      for (const el of qsAll(document, 'dialog[open], [role="dialog"], [aria-modal="true"]').slice(0, 20)) out.add(el);
+      return [...out].filter((el) => {
+        if (seen.has(el) || el.hasAttribute('data-rockyweb-hidden')) return false;
+        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName.startsWith('ROCKYWEB-')) return false;
+        if (!firstSeen.has(el)) firstSeen.set(el, Date.now());
+        return !!el.querySelector('input') && isVisible(el) && isOverlay(el);
+      });
+    }
+
+    async function evaluate(el) {
+      seen.add(el);
+      const sig = signals(el);
+      if (RW.localVerdict(sig).outcome !== 'ask' || requests >= MAX_REQUESTS) return;
+      requests++;
+      const gen = generation;
+      const askedAt = Date.now();
+      const where = location.origin + location.pathname;
+      const resp = await send(A.AI_EVALUATE_CANDIDATE, { signals: sig });
+      if (!resp || !resp.ok || resp.outcome !== 'hide_overlay') return;
+      // Recheck everything: same page, same settings, still showing, and untouched by the user meanwhile.
+      if (gen !== generation || !config || resp.epoch !== config.epoch) return;
+      if (location.origin + location.pathname !== where) return;
+      if (!el.isConnected || !isVisible(el) || Activity.at > askedAt) return;
+      const recheck = signals(el);
+      recheck.id = sig.id;
+      if (RW.localVerdict(recheck).outcome !== 'ask' || recheck.signature !== sig.signature) return;
+      apply(el, sig, resp.source);
+    }
+
+    function apply(el, sig, source) {
+      const id = `a${Math.random().toString(36).slice(2, 10)}`;
+      applied.set(id, { el, prev: el.style.getPropertyValue('display'), prevPriority: el.style.getPropertyPriority('display') });
+      el.style.setProperty('display', 'none', 'important');
+      el.setAttribute('data-rockyweb-hidden', 'optimised');
+      if (sig.scrollLocked) Scroll.healSoon([]);
+      send(A.AI_ADJUSTMENT_APPLIED, { id, signature: sig.signature, source });
+    }
+
+    function revert(id) {
+      const entry = applied.get(id);
+      if (!entry) return false;
+      if (entry.prev) entry.el.style.setProperty('display', entry.prev, entry.prevPriority);
+      else entry.el.style.removeProperty('display');
+      entry.el.removeAttribute('data-rockyweb-hidden');
+      applied.delete(id);
+      return true;
+    }
+
+    async function scan() {
+      scanTimer = 0;
+      if (running || scans >= MAX_SCANS || document.visibilityState !== 'visible') return;
+      running = true;
+      scans++;
+      try {
+        for (const el of candidates().slice(0, 4)) await evaluate(el);
+      } catch (_) {
+        /* never break the page */
+      } finally {
+        running = false;
+      }
+    }
+
+    function schedule(delay) {
+      if (scanTimer || scans >= MAX_SCANS || !observer) return;
+      scanTimer = setTimeout(scan, delay);
+    }
+
+    function onVisible() { if (document.visibilityState === 'visible') schedule(700); }
+
+    function start() {
+      if (!IS_TOP || observer) return;
+      const begin = () => {
+        if (!document.body || observer) return;
+        // Only direct children of <body>: popups are appended there, deeper changes are ignored.
+        observer = new MutationObserver(() => schedule(700));
+        observer.observe(document.body, { childList: true });
+        document.addEventListener('visibilitychange', onVisible);
+        schedule(2500);
+      };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
+      else begin();
+    }
+
+    // Pending answers are discarded; adjustments already made stay until undone.
+    function stop() {
+      generation++;
+      if (observer) { observer.disconnect(); observer = null; }
+      document.removeEventListener('visibilitychange', onVisible);
+      clearTimeout(scanTimer);
+      scanTimer = 0;
+    }
+
+    function invalidate() { generation++; }
+
+    return { start, stop, revert, invalidate };
   })();
 
   // ---------------------------------------------------------------- element picker
@@ -931,8 +1198,16 @@
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // Only this extension's popup or service worker, never another tab.
-    if (!msg || sender.id !== chrome.runtime.id || sender.tab || !IS_TOP) return false;
-    if (msg.action === A.START_ELEMENT_PICKER) {
+    if (!msg || sender.id !== chrome.runtime.id || sender.tab) return false;
+    if (msg.action === A.MODE_CHANGED) {
+      refreshConfig();
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (!IS_TOP) return false;
+    if (msg.action === A.AI_REVERT) {
+      sendResponse({ ok: Optimiser.revert(String((msg.payload || {}).id || '')) });
+    } else if (msg.action === A.START_ELEMENT_PICKER) {
       Picker.start();
       sendResponse({ ok: true });
     } else if (msg.action === A.CONSENT_FOLLOWUP) {
@@ -949,7 +1224,20 @@
     intent = resp.intent || null;
     if (!config.supported || config.tier === 'off') return;
     if (resp.hasCosmetics) send(A.APPLY_COSMETICS);
-    if (intent) Consent.start();
+    if (intent) Consent.start(config.consentDepth);
+    if (config.newsletter !== 'off') Optimiser.start();
+  }
+
+  // Settings changed elsewhere: stop work that no longer applies (Light, consent off, AI off, new epoch).
+  async function refreshConfig() {
+    const resp = await send(A.GET_EFFECTIVE_CONFIG);
+    if (!resp || !resp.ok || !resp.config) return;
+    const prev = config;
+    config = resp.config;
+    if (!prev) return;
+    if (config.consentDepth !== prev.consentDepth || config.tier === 'off') Consent.halt();
+    if (config.newsletter === 'off' || config.tier === 'off') Optimiser.stop();
+    else if (config.epoch !== prev.epoch) Optimiser.invalidate();
   }
 
   boot();

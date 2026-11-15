@@ -4,7 +4,7 @@
 
   const RW = window.RockyShared;
   const A = RW.ACTIONS;
-  const { h, send, seg, onOff, fmt, timeAgo, errorText } = RW.UI;
+  const { h, send, seg, onOff, toggle, fmt, timeAgo, errorText } = RW.UI;
   const $ = (id) => document.getElementById(id);
 
   const PAGES = ['protection', 'cookies', 'custom', 'websites', 'trackers', 'hidden', 'data'];
@@ -98,6 +98,128 @@
       fact('ad slots', cfg.cosmeticFiltering ? 'hidden' : 'shown', cfg.cosmeticFiltering),
       fact('annoyances', cfg.aggressiveFiltering ? 'hidden' : 'shown', cfg.aggressiveFiltering),
       fact('tracking links', cfg.stripUrlParams ? 'cleaned' : 'untouched', cfg.stripUrlParams));
+
+    $('operatingButtons').replaceChildren(seg(
+      ['full', 'light'].map((m) => ({ value: m, label: m, title: RW.OPERATING_META[m].description })),
+      S.operatingMode,
+      (m) => act(A.SET_OPERATING_MODE, { mode: m }, m === 'light' ? 'Light mode is on' : 'Full mode is on'),
+      'How hard Rockyweb works', false, 'btns'));
+    $('operatingDescription').textContent = RW.OPERATING_META[S.operatingMode].description;
+    renderAi();
+  }
+
+  // ---- automatic optimisation (Chrome's on-device AI)
+  // Opening this page only calls availability(). A model download starts only from the user's click.
+
+  const SETUP_KEY = 'aiSetupInProgress';
+  const ai = { availability: null, setup: 'idle', progress: 0, error: '', ctrl: null, otherSetup: false, pollTimer: 0 };
+
+  async function checkAi() {
+    if (typeof self.LanguageModel === 'undefined' || typeof LanguageModel.availability !== 'function') {
+      ai.availability = 'absent';
+    } else {
+      try { ai.availability = await LanguageModel.availability(RW.AI_MODEL_OPTIONS); } catch (_) { ai.availability = 'unavailable'; }
+    }
+    const flag = await chrome.storage.session.get(SETUP_KEY).catch(() => ({}));
+    ai.otherSetup = !!flag[SETUP_KEY] && ai.setup !== 'downloading';
+    clearTimeout(ai.pollTimer);
+    if ((ai.availability === 'downloading' || ai.otherSetup) && document.visibilityState === 'visible') ai.pollTimer = setTimeout(checkAi, 4000);
+    renderAi();
+  }
+
+  function aiState() {
+    const pref = !!S.aiSettings.autoOptimise;
+    const a = ai.availability;
+    if (S.operatingMode === 'light') {
+      return { disabled: true, text: pref ? 'AI is paused in Light mode. Your choice is kept and resumes in Full mode.' : 'AI is paused in Light mode.' };
+    }
+    if (a === null) return { disabled: true, text: 'Checking whether on-device AI is available…' };
+    if (a === 'absent' || a === 'unavailable' || a === 'error') return { disabled: true, warn: true, text: 'On-device AI is unavailable in this browser or on this device.' };
+    if (ai.setup === 'downloading') {
+      return { disabled: true, text: `Chrome is downloading the on-device model${ai.progress ? ` (${Math.round(ai.progress * 100)}%)` : ''}. You can keep browsing.` };
+    }
+    if (a === 'downloading' || ai.otherSetup) return { disabled: true, text: 'Chrome is downloading the on-device model. This page updates when it is ready.' };
+    if (a === 'downloadable') {
+      return { disabled: false, text: pref ? 'On, but Chrome still needs to download its on-device model.' : 'Chrome needs to download its on-device model once when you turn this on.' };
+    }
+    return { disabled: false, text: pref ? 'On. Adjustments happen quietly; undo them from the toolbar.' : 'Off.' };
+  }
+
+  function renderAi() {
+    if (!S) return;
+    const st = aiState();
+    const pref = !!S.aiSettings.autoOptimise;
+    const sw = toggle(pref, (v) => onAiToggle(v), 'Automatically optimise protection for each site', st.disabled);
+    sw.setAttribute('aria-describedby', 'aiStatus');
+    $('aiToggle').replaceChildren(sw);
+    const status = $('aiStatus');
+    status.textContent = ai.error || st.text;
+    status.classList.toggle('warn', !!(ai.error || st.warn));
+
+    const setup = $('aiSetup');
+    setup.replaceChildren();
+    const needsDownload = ai.availability === 'downloadable' && S.operatingMode !== 'light';
+    if (ai.setup === 'confirm' || (pref && needsDownload && ai.setup === 'idle')) {
+      setup.append(
+        h('p', { text: 'Chrome will download Gemini Nano, its on-device model. It is a large download (usually a few gigabytes) managed and stored by Chrome. Rockyweb sends nothing to any server.' }),
+        h('button', { class: 'btn on', type: 'button', onclick: startDownload, text: 'download and turn on' }),
+        h('button', { class: 'btn', type: 'button', text: 'cancel', onclick: () => { ai.setup = 'idle'; if (pref) act(A.SET_AI_AUTO_OPTIMISE, { enabled: false }); else renderAi(); } }));
+    } else if (ai.setup === 'downloading') {
+      const bar = h('span', { style: { width: `${Math.round(ai.progress * 100)}%` } });
+      setup.append(
+        h('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Model download', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(ai.progress * 100)) }, bar),
+        h('button', { class: 'btn', type: 'button', text: 'cancel download', onclick: () => ai.ctrl && ai.ctrl.abort() }));
+    }
+    setup.hidden = !setup.childNodes.length;
+  }
+
+  function onAiToggle(enabled) {
+    ai.error = '';
+    if (!enabled) { ai.setup = 'idle'; act(A.SET_AI_AUTO_OPTIMISE, { enabled: false }, 'Automatic optimisation is off'); return; }
+    if (ai.availability === 'available') { act(A.SET_AI_AUTO_OPTIMISE, { enabled: true }, 'Automatic optimisation is on'); return; }
+    if (ai.availability === 'downloadable') { ai.setup = 'confirm'; renderAi(); return; }
+    renderAi();
+  }
+
+  // Runs from the user's click, which Chrome requires before it downloads the model.
+  async function startDownload() {
+    if (ai.setup === 'downloading' || ai.otherSetup) return;
+    ai.setup = 'downloading';
+    ai.progress = 0;
+    ai.error = '';
+    ai.ctrl = new AbortController();
+    const ctrl = ai.ctrl;
+    let created;
+    try {
+      created = LanguageModel.create(Object.assign({}, RW.AI_MODEL_OPTIONS, {
+        signal: ctrl.signal,
+        monitor(m) {
+          m.addEventListener('downloadprogress', (e) => {
+            ai.progress = e.total ? e.loaded / e.total : e.loaded;
+            renderAi();
+          });
+        }
+      }));
+    } catch (_) {
+      created = Promise.reject(new Error('create_failed'));
+    }
+    chrome.storage.session.set({ [SETUP_KEY]: Date.now() }).catch(() => {});
+    renderAi();
+    send(A.SET_AI_AUTO_OPTIMISE, { enabled: true }).catch(() => {});
+    try {
+      const session = await created;
+      session.destroy(); // only needed the download; inference runs in the background
+      toast('On-device AI is ready. Automatic optimisation is on.');
+    } catch (_) {
+      ai.error = ctrl.signal.aborted ? 'Download cancelled. Automatic optimisation stays off.' : 'Chrome could not set up the on-device model. Please try again later.';
+      await send(A.SET_AI_AUTO_OPTIMISE, { enabled: false }).catch(() => {});
+    } finally {
+      ai.setup = 'idle';
+      ai.ctrl = null;
+      await chrome.storage.session.remove(SETUP_KEY).catch(() => {});
+      await load();
+      checkAi();
+    }
   }
 
   function renderCookies() {
@@ -155,6 +277,8 @@
       const sliders = Object.keys(p.domainSliderOverrides || {}).length;
       if (sliders) notes.push(`${sliders} domain choice${sliders === 1 ? '' : 's'}`);
       if (p.customCosmeticSelectors.length) notes.push(`${p.customCosmeticSelectors.length} hidden`);
+      if (p.newsletterPrompts === 'hide') notes.push('newsletter prompts hidden');
+      if (p.newsletterPrompts === 'keep') notes.push('newsletter prompts left alone');
       notes.push(timeAgo(p.updatedAt));
       return h('div', { class: 'item' },
         h('span', { class: 'name', title: site, text: site }),
@@ -235,6 +359,8 @@
   }
 
   function renderData() {
+    const sites = new Set([...Object.keys(S.aiMemory.decisions), ...Object.keys(S.aiMemory.undone)]);
+    $('aiMemoryText').textContent = `Decisions are remembered for a week and undos for 30 days, per website. Currently ${sites.size} website${sites.size === 1 ? '' : 's'}.`;
     const s = S.stats;
     const stat = (label, v) => h('div', {}, h('div', { class: 'stat-l', text: label }), h('div', { class: 'stat-v', text: fmt(v) }));
     $('statGrid').replaceChildren(
@@ -245,7 +371,14 @@
       h('p', {}, 'rockyweb ', h('b', { text: `v${diag.version}` }),
         ` · ${Object.keys(S.siteProfiles).length} websites · ${Object.keys(S.learnedTrackers).length} domains seen · ${diag.dynamicRuleCount} rules built from your settings`),
       h('p', { text: 'Everything stays in this browser. Rockyweb makes no network requests of its own, has no analytics and loads no remote code.' }),
-      h('p', { text: 'Named after Rocky the cocker spaniel. Font: Lexend Deca, SIL Open Font License.' }));
+      h('p', { text: 'Named after Rocky the British cocker spaniel. Font: Lexend Deca, SIL Open Font License.' }),
+      h('p', { id: 'aiDiagnostics' }));
+    send(A.GET_AI_STATUS).then((st) => {
+      const el = $('aiDiagnostics');
+      if (!el) return;
+      const words = { absent: 'not offered by this browser', unavailable: 'unavailable on this device', downloadable: 'not downloaded', downloading: 'downloading', available: 'ready', error: 'not responding' };
+      el.textContent = `On-device AI in the background: ${words[st.availability] || st.availability} · ${st.stats.prompts} model call${st.stats.prompts === 1 ? '' : 's'} since Chrome started · ${st.hasSession ? 'session open' : 'no session open'}`;
+    }).catch(() => {});
   }
 
   function renderAll() {
@@ -288,6 +421,9 @@
     act(A.ADD_COSMETIC_SELECTOR, { siteKey: key, selector: sel }, `Hidden on ${key} after a reload`);
     $('selInput').value = '';
   });
+
+  $('clearAiMemoryBtn').addEventListener('click', () => act(A.CLEAR_AI_MEMORY, {}, 'Automatic adjustment memory cleared'));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkAi(); });
 
   $('resetLearned').addEventListener('click', () => {
     if (confirm('Forget every learned tracker? Your own choices for individual domains are kept.')) act(A.RESET_LEARNED_TRACKERS, {}, 'Learning reset');
@@ -337,4 +473,5 @@
   });
 
   load();
+  checkAi();
 })();

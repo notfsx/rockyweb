@@ -4,7 +4,6 @@ self.rockywebCmpMainWorld = function rockywebCmpMainWorld(intent) {
   'use strict';
   const cats = (intent && intent.categories) || { necessary: true, functional: false, analytics: false, marketing: false };
   const allOff = !cats.functional && !cats.analytics && !cats.marketing;
-  const noTracking = !cats.analytics && !cats.marketing;
   const allOn = !!(cats.functional && cats.analytics && cats.marketing);
   const w = window;
 
@@ -22,7 +21,7 @@ self.rockywebCmpMainWorld = function rockywebCmpMainWorld(intent) {
     return 'unknown';
   }
   const wants = (category) => category === 'necessary' || (category !== 'unknown' && !!cats[category]);
-  const baseDecision = noTracking ? 'reject' : allOn ? 'accept' : 'custom';
+  const baseDecision = allOff ? 'reject' : allOn ? 'accept' : 'custom';
   const decisionLabel = (downgraded) => (downgraded ? 'reject' : baseDecision);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const cookieHas = (re) => { try { return re.test(document.cookie); } catch (_) { return false; } };
@@ -131,13 +130,15 @@ self.rockywebCmpMainWorld = function rockywebCmpMainWorld(intent) {
       needed: () => !cookieHas(/cmplz_banner-status=dismissed/),
       apply: async () => {
         if (allOn && typeof w.cmplz_accept_all === 'function') { w.cmplz_accept_all(); return 'accept'; }
-        if (typeof w.cmplz_deny_all === 'function') w.cmplz_deny_all();
-        if (typeof w.cmplz_set_category === 'function') {
-          if (cats.functional) w.cmplz_set_category('preferences');
-          if (cats.analytics) w.cmplz_set_category('statistics');
-          if (cats.marketing) w.cmplz_set_category('marketing');
-        }
-        return decisionLabel();
+        // Without deny_all nothing would be submitted, so let the button rules answer instead.
+        if (typeof w.cmplz_deny_all !== 'function') return null;
+        w.cmplz_deny_all();
+        if (allOff) return 'reject';
+        if (typeof w.cmplz_set_category !== 'function') return 'reject';
+        if (cats.functional) w.cmplz_set_category('preferences');
+        if (cats.analytics) w.cmplz_set_category('statistics');
+        if (cats.marketing) w.cmplz_set_category('marketing');
+        return 'custom';
       }
     },
     {

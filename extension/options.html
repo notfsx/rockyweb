@@ -35,6 +35,23 @@
           <div class="setting-ctl" id="tierButtons"></div>
         </div>
         <dl class="facts" id="tierFacts"></dl>
+        <div class="setting">
+          <div class="setting-text">
+            <h3>how hard Rockyweb works</h3>
+            <p id="operatingDescription"></p>
+          </div>
+          <div class="setting-ctl" id="operatingButtons"></div>
+        </div>
+        <p class="precedence">Your explicit choices always come first, then the mode for each site, then Light, then automatic optimisation. Light never undoes a choice you made.</p>
+        <div class="setting" id="aiSetting">
+          <div class="setting-text">
+            <h3 id="aiTitle">automatically optimise protection for each site</h3>
+            <p>Uses Chrome's on-device AI to make small, reversible adjustments, such as hiding an unsolicited newsletter overlay on an article. Nothing leaves your device and nothing asks for your attention. Every adjustment can be undone from the toolbar.</p>
+            <p class="ai-status" id="aiStatus" role="status" aria-live="polite"></p>
+            <div class="ai-setup" id="aiSetup" hidden></div>
+          </div>
+          <div class="setting-ctl" id="aiToggle"></div>
+        </div>
       </section>
 
       <section id="cookies" class="section" hidden>
@@ -105,7 +122,11 @@
           <div class="setting-ctl"><label class="btn" id="importLabel"><input type="file" id="importFile" accept="application/json,.json" hidden>import</label></div>
         </div>
         <div class="setting">
-          <div class="setting-text"><h3>reset everything</h3><p>Back to balanced. Forgets all websites, trackers, hidden elements and statistics.</p></div>
+          <div class="setting-text"><h3>automatic adjustment memory</h3><p id="aiMemoryText">Decisions remembered for a week and undos remembered for 30 days, per website.</p></div>
+          <div class="setting-ctl"><button class="btn" id="clearAiMemoryBtn" type="button">forget</button></div>
+        </div>
+        <div class="setting">
+          <div class="setting-text"><h3>reset everything</h3><p>Back to balanced. Forgets all websites, trackers, hidden elements, automatic adjustments and statistics.</p></div>
           <div class="setting-ctl"><button class="btn danger" id="resetAllBtn" type="button">reset</button></div>
         </div>
         <div class="about" id="aboutPanel"></div>

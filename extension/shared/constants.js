@@ -13,9 +13,13 @@
     CONSENT_HANDLED: 'consentHandled',
     PICKER_ADD_SELECTOR: 'pickerAddSelector',
     PICKER_REMOVE_SELECTOR: 'pickerRemoveSelector',
+    AI_EVALUATE_CANDIDATE: 'aiEvaluateCandidate',
+    AI_ADJUSTMENT_APPLIED: 'aiAdjustmentApplied',
 
-    // background -> content script (top frame)
+    // background -> content script
     CONSENT_FOLLOWUP: 'consentFollowup',
+    MODE_CHANGED: 'modeChanged',
+    AI_REVERT: 'aiRevert',
 
     // popup -> content script (top frame)
     START_ELEMENT_PICKER: 'startElementPicker',
@@ -38,7 +42,15 @@
     EXPORT_SETTINGS: 'exportSettings',
     IMPORT_SETTINGS: 'importSettings',
     RESET_STATS: 'resetStats',
-    RESET_ALL: 'resetAll'
+    RESET_ALL: 'resetAll',
+    SET_OPERATING_MODE: 'setOperatingMode',
+    SET_AI_AUTO_OPTIMISE: 'setAiAutoOptimise',
+    GET_AI_STATUS: 'getAiStatus',
+    SET_SITE_NEWSLETTER: 'setSiteNewsletter',
+    RESTORE_SITE_PROFILE: 'restoreSiteProfile',
+    AI_UNDO_ADJUSTMENT: 'aiUndoAdjustment',
+    AI_SITE_OPT_OUT: 'aiSiteOptOut',
+    CLEAR_AI_MEMORY: 'clearAiMemory'
   });
 
   RW.TIER_ORDER = Object.freeze(['off', 'consent_only', 'balanced', 'strict', 'custom']);
@@ -47,7 +59,7 @@
     off: {
       label: 'Off',
       name: 'No Protection',
-      description: 'Every engine is disabled and static filter rules are bypassed. Use it for sites that misbehave.',
+      description: 'Every engine is switched off and filter rules are bypassed. Use it for sites that misbehave.',
       color: '#8A8F98'
     },
     consent_only: {
@@ -59,7 +71,7 @@
     balanced: {
       label: 'Balanced',
       name: 'Balanced Protection',
-      description: 'Blocks known ads and trackers, strips cookies from learned trackers, hides ads and cleans URLs.',
+      description: 'Blocks known ads and trackers, strips cookies from learned trackers, hides ads and cleans links.',
       color: '#3DD68C'
     },
     strict: {
@@ -93,10 +105,22 @@
   ]);
 
   RW.STORAGE_KEYS = Object.freeze([
-    'schemaVersion', 'globalDefaultTier', 'globalCustomConfig', 'siteProfiles', 'learnedTrackers', 'stats'
+    'schemaVersion', 'globalDefaultTier', 'globalCustomConfig', 'siteProfiles', 'learnedTrackers', 'stats',
+    'operatingMode', 'aiSettings', 'aiMemory'
   ]);
 
-  RW.SCHEMA_VERSION = 1;
+  RW.SCHEMA_VERSION = 2;
+
+  // Options for every LanguageModel call, so availability() and create() always agree.
+  RW.AI_MODEL_OPTIONS = Object.freeze({
+    expectedInputs: [{ type: 'text', languages: ['en'] }],
+    expectedOutputs: [{ type: 'text', languages: ['en'] }]
+  });
+
+  RW.OPERATING_META = Object.freeze({
+    full: { label: 'Full', description: 'Everything Rockyweb offers, including tracker learning and automatic optimisation if you turn it on.' },
+    light: { label: 'Light', description: 'Uses less of your computer. Blocking, link cleaning and your site settings stay; tracker learning, AI and deep page scanning pause. Cookie popups are answered only for the consent platforms Rockyweb recognises.' }
+  });
 
   if (typeof module === 'object' && module.exports) module.exports = RW;
 })(typeof globalThis !== 'undefined' ? globalThis : self);

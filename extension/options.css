@@ -80,3 +80,11 @@ body { min-height: 100vh; }
   .item, .tracker-item { grid-template-columns: minmax(0, 1fr) auto; }
   .item .meta, .tracker-item .meta { display: none; }
 }
+
+.precedence { margin: 4px 0 0; padding: 10px 14px; border-radius: var(--radius); background: var(--sub-alt); color: var(--sub-dim); font-size: 12.5px; line-height: 1.5; }
+.ai-status { color: var(--sub) !important; }
+.ai-status.warn { color: var(--error) !important; }
+.ai-setup { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ai-setup p { flex-basis: 100%; margin: 0 0 4px !important; }
+.progress { flex: 1 1 200px; height: 6px; border-radius: 999px; background: var(--sub-alt-2); overflow: hidden; }
+.progress > span { display: block; height: 100%; width: 0; background: var(--main); transition: width 0.2s; }

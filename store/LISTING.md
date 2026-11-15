@@ -8,7 +8,7 @@ Everything needed to publish Rockyweb. Text here is ready to paste into the deve
 npm run package
 ```
 
-Upload `dist/rockyweb-1.0.0.zip`. The script runs the verification checks first and leaves out Chrome's `_metadata` cache.
+Upload `dist/rockyweb-1.1.0.zip`. The script runs the verification checks first and leaves out Chrome's `_metadata` cache.
 
 ## 2. Store listing
 
@@ -23,7 +23,7 @@ Upload `dist/rockyweb-1.0.0.zip`. The script runs the verification checks first 
 **Description:**
 
 ```
-Rockyweb takes care of the annoying parts of the web so you don't have to. It's named after Rocky, a cocker spaniel who never lets a stranger past the door.
+Rockyweb makes browsing quieter. Choose your preferences once and get on with it. It's named after Rocky, a British cocker spaniel who never let a stranger past the door.
 
 COOKIE POPUPS, ANSWERED YOUR WAY
 Pick once which cookies you allow (functional, analytics, marketing). Rockyweb answers cookie popups for you on every site, using the consent platform's own controls when it can (OneTrust, Cookiebot, Didomi, Usercentrics and more) and clicking the right buttons on dozens of others. Pages that were left unscrollable are fixed automatically.
@@ -33,6 +33,12 @@ Known ad networks and analytics domains are blocked with Chrome's built-in reque
 
 ONE SWITCH PER SITE
 Every site gets a simple on/off switch and five modes: off, consent only, balanced (the default), strict, or your own custom mix. Something broken? Turn the site down a notch and carry on. The gear icon opens per-engine switches and an allow / cookies / block choice for every third-party domain on the page.
+
+QUIETLY OPTIMISED FOR EACH SITE (OPTIONAL)
+Turn on automatic optimisation once and Rockyweb uses Chrome's on-device AI to make small, reversible adjustments where context matters, such as hiding an unsolicited newsletter overlay on an article while leaving sign-in and checkout forms alone. It never interrupts you, everything can be undone from the toolbar, and nothing leaves your device. Needs a computer that supports Chrome's built-in AI; everything else works without it.
+
+LIGHT MODE
+Uses less of your computer. Blocking, link cleaning and your site settings stay; tracker learning, AI and deep page scanning pause.
 
 HIDE ANYTHING WITH A CLICK
 Point at a banner, click, done. Rockyweb remembers it for that site. Undo is one key away.
@@ -70,9 +76,9 @@ Rockyweb protects privacy while browsing: it answers cookie consent popups with 
 | `webRequest` | Observes (never modifies) third-party requests to detect domains that set or send tracking cookies across sites, so they can be learned locally, and counts blocked requests for the toolbar badge. |
 | Host permission `<all_urls>` | Cookie popups, ads and trackers appear on any website, so the content script, CSS injection and request rules must be able to run on every site the user visits. |
 
-**Remote code:** No, I am not using remote code. All JavaScript is packaged in the extension.
+**Remote code:** No, I am not using remote code. All JavaScript is packaged in the extension. The optional AI feature uses Chrome's built-in on-device model through the `LanguageModel` API; no model or code is fetched by the extension.
 
-**Data usage:** Rockyweb does not collect or transmit user data. Browsing-related data (third-party domains and the sites they were seen on) is processed and stored only on the user's device, to provide the tracker-learning feature. If the dashboard's definitions lead you to declare it anyway, tick "Web history" and state that it never leaves the device. Then certify:
+**Data usage:** Rockyweb does not collect or transmit user data. The optional on-device AI receives a few structural facts about one page overlay and runs entirely in Chrome on the user's device. Browsing-related data (third-party domains and the sites they were seen on) is processed and stored only on the user's device, to provide the tracker-learning feature. If the dashboard's definitions lead you to declare it anyway, tick "Web history" and state that it never leaves the device. Then certify:
 - I do not sell or transfer user data to third parties, outside of the approved use cases.
 - I do not use or transfer user data for purposes unrelated to my item's single purpose.
 - I do not use or transfer user data to determine creditworthiness or for lending purposes.
@@ -82,12 +88,13 @@ Rockyweb protects privacy while browsing: it answers cookie consent popups with 
 ## 5. Notes for the reviewer (optional field)
 
 ```
-No login needed. To test: open any news site with a cookie banner; Rockyweb answers it and shows a small confirmation in the corner. Click the toolbar icon for the per-site switch and modes; the gear icon shows advanced controls and "hide an element". Settings live on the options page.
+No login needed. To test: open any news site with a cookie banner; Rockyweb answers it quietly; the toolbar badge and popup show what it did (an on-page confirmation can be turned on in settings). Click the toolbar icon for the per-site switch and modes; the gear icon shows advanced controls and "hide an element". Settings live on the options page.
 ```
 
 ## 6. Before you submit
 
 - [ ] `npm run check` and `npm run test:e2e` pass
+- [ ] `npm run test:nano` passes on a machine with Chrome's on-device AI (real model, all Rockyweb pages closed)
 - [ ] Version in `extension/manifest.json` bumped for every new upload
 - [ ] Privacy policy published and linked
 - [ ] Developer account has a verified contact email

@@ -6,3 +6,4 @@ node_modules/
 test-results/
 extension/_metadata/
 dist/
+.nano-profile/

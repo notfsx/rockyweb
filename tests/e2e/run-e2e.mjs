@@ -199,13 +199,15 @@ try {
     assert.equal(v, 'api-reject');
     const healed = await poll(() => web.evaluate(() => !document.documentElement.classList.contains('ot-overflow-hidden') && getComputedStyle(document.documentElement).overflowY !== 'hidden'), 6000);
     assert.equal(healed, true);
-    const toast = await poll(() => web.evaluate(() => !!document.querySelector('rockyweb-toast')), 3000);
-    assert.equal(toast, true, 'toast element present');
+    await sleep(1500);
+    assert.equal(await web.evaluate(() => !!document.querySelector('rockyweb-toast')), false, 'on-page confirmations are silent by default');
   });
 
   await check('unknown banner rejected by multilingual text heuristics', async () => {
     await web.goto(at('generic.test', '/generic'));
-    const choice = await poll(() => web.evaluate(() => window.__choice), 12000);
+    // Functional cookies are allowed by default, so the settings route is tried first; this
+    // banner has no granular controls, so Rockyweb falls back to "Reject all".
+    const choice = await poll(() => web.evaluate(() => (window.__choice === 'reject' ? 'reject' : null)), 12000);
     assert.equal(choice, 'reject');
   });
 
@@ -244,7 +246,7 @@ try {
     await web.waitForLoadState('load');
     assert.equal(await web.evaluate(() => window.adLoaded), true);
     await web.goto(at('consent.test', '/generic'));
-    assert.equal(await poll(() => web.evaluate(() => window.__choice), 12000), 'reject');
+    assert.equal(await poll(() => web.evaluate(() => (window.__choice === 'reject' ? 'reject' : null)), 12000), 'reject');
   });
 
   await check('Custom: per-site switch persists in chrome.storage.local', async () => {

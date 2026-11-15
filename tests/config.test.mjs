@@ -123,7 +123,10 @@ test('mutators never modify their input state', () => {
 
 test('consentIntent maps choices to decisions', () => {
   const s = RW.createDefaultState();
-  assert.equal(RW.consentIntent(RW.getEffectiveConfig(s, 'a.com')).decision, 'reject');
+  // Default categories keep functional cookies, so the answer is a custom choice, not reject-all.
+  assert.equal(RW.consentIntent(RW.getEffectiveConfig(s, 'a.com')).decision, 'custom');
+  const none = RW.setGlobalCustomOption(s, 'consentCategories', { functional: false, analytics: false, marketing: false });
+  assert.equal(RW.consentIntent(RW.getEffectiveConfig(none, 'a.com')).decision, 'reject');
   const all = RW.setGlobalCustomOption(s, 'consentCategories', { functional: true, analytics: true, marketing: true });
   assert.equal(RW.consentIntent(RW.getEffectiveConfig(all, 'a.com')).decision, 'accept');
   const mixed = RW.setGlobalCustomOption(s, 'consentCategories', { functional: true, analytics: true, marketing: false });
@@ -196,4 +199,84 @@ test('custom switches are remembered across presets; resume keeps sliders', () =
   s = RW.setSiteCustomOption(s, 'a.com', 'stripUrlParams', false, 8);
   assert.equal(RW.getEffectiveConfig(s, 'a.com').cosmeticFiltering, true);
   assert.equal(RW.getEffectiveConfig(s, 'a.com').consentMode, 'strict_reject');
+});
+
+test('new installs are silent; a saved notification preference is kept', () => {
+  assert.equal(RW.createDefaultState().globalCustomConfig.showToastBadge, false);
+  const v1 = RW.normalizeState({ schemaVersion: 1, globalCustomConfig: { showToastBadge: true }, siteProfiles: { 'a.com': { tier: 'strict' } } });
+  assert.equal(v1.globalCustomConfig.showToastBadge, true);
+  assert.equal(v1.siteProfiles['a.com'].tier, 'strict');
+  assert.equal(v1.operatingMode, 'full');
+  assert.deepEqual(v1.aiSettings, { autoOptimise: false });
+});
+
+test('runtimeCapabilities: one precedence for Light, AI, Incognito and explicit choices', () => {
+  let s = RW.setAiAutoOptimise(RW.createDefaultState(), true);
+  const caps = (st, host, ctx) => RW.runtimeCapabilities(RW.getEffectiveConfig(st, host), ctx);
+  assert.deepEqual(caps(s, 'a.com'), { consent: 'full', learning: true, headerObservation: true, newsletter: 'ai', ai: true, aiPausedReason: null });
+  const light = RW.setOperatingMode(s, 'light');
+  assert.deepEqual(caps(light, 'a.com'), { consent: 'bounded', learning: false, headerObservation: false, newsletter: 'off', ai: false, aiPausedReason: 'light' });
+  assert.equal(caps(s, 'a.com', { incognito: true }).ai, false);
+  assert.equal(caps(s, 'a.com', { incognito: true }).learning, false);
+  assert.equal(caps(s, 'a.com', { incognito: true }).aiPausedReason, 'incognito');
+  // Explicit per-site choices win over AI and survive Light.
+  const keep = RW.setSiteNewsletter(s, 'a.com', 'keep', 1);
+  assert.equal(caps(keep, 'a.com').newsletter, 'off');
+  const hide = RW.setSiteNewsletter(RW.setOperatingMode(s, 'light'), 'a.com', 'hide', 1);
+  assert.equal(caps(hide, 'a.com').newsletter, 'hide');
+  // Site policies that do not hide anything never get automatic hiding.
+  assert.equal(caps(RW.setSiteTier(s, 'a.com', 'consent_only', 1), 'a.com').newsletter, 'off');
+  assert.equal(caps(RW.setSiteTier(s, 'a.com', 'off', 1), 'a.com').consent, 'off');
+  assert.equal(caps(RW.setSiteCustomOption(s, 'a.com', 'cosmeticFiltering', false, 1), 'a.com').ai, false);
+  assert.equal(caps(RW.createDefaultState(), 'a.com').ai, false); // AI is off by default
+});
+
+test('Light is separate from site policies and switching back restores everything', () => {
+  let s = RW.setAiAutoOptimise(RW.createDefaultState(), true);
+  s = RW.setSiteTier(s, 'a.com', 'strict', 1);
+  s = RW.setDomainSlider(s, 'b.com', 'x.net', 'block', 2);
+  const before = JSON.stringify([s.siteProfiles, s.aiSettings, RW.getEffectiveConfig(s, 'a.com')]);
+  const back = RW.setOperatingMode(RW.setOperatingMode(s, 'light'), 'full');
+  assert.equal(JSON.stringify([back.siteProfiles, back.aiSettings, RW.getEffectiveConfig(back, 'a.com')]), before);
+  assert.equal(RW.getEffectiveConfig(RW.setOperatingMode(s, 'light'), 'a.com').tier, 'strict');
+  assert.throws(() => RW.setOperatingMode(s, 'turbo'), /invalid_value/);
+});
+
+test('settings epoch changes only with settings that matter', () => {
+  const s = RW.setAiAutoOptimise(RW.createDefaultState(), true);
+  const e = (st) => RW.settingsEpoch(RW.getEffectiveConfig(st, 'a.com'));
+  assert.equal(e(s), e(RW.setTrackerGlobalOverride(s, 'x.com', 'block', 1)));
+  assert.notEqual(e(s), e(RW.setSiteNewsletter(s, 'a.com', 'keep', 1)));
+  assert.notEqual(e(s), e(RW.setOperatingMode(s, 'light')));
+  assert.notEqual(e(s), e(RW.setSiteTier(s, 'a.com', 'strict', 1)));
+});
+
+test('automatic adjustment memory: bounded, invalidated by settings, honours undo', () => {
+  const t = 1_000_000_000_000;
+  let s = RW.createDefaultState();
+  s = RW.rememberAiDecision(s, 'a.com', 'article|v:klaviyo|n:1', 'hide_overlay', 'e1', t);
+  assert.equal(RW.recallAiDecision(s, 'a.com', 'article|v:klaviyo|n:1', 'e1', t + 1000), 'hide_overlay');
+  assert.equal(RW.recallAiDecision(s, 'a.com', 'article|v:klaviyo|n:1', 'e2', t + 1000), null, 'settings changed');
+  assert.equal(RW.recallAiDecision(s, 'a.com', 'article|v:klaviyo|n:1', 'e1', t + RW.AI_DECISION_TTL + 1), null, 'expired');
+  assert.equal(RW.recallAiDecision(s, 'b.com', 'article|v:klaviyo|n:1', 'e1', t), null, 'other site');
+  s = RW.markAiUndone(s, 'a.com', 'v:klaviyo|n:1', t);
+  assert.equal(RW.isAiUndone(s, 'a.com', 'v:klaviyo|n:1', t + 86400e3), true);
+  assert.equal(RW.recallAiDecision(s, 'a.com', 'article|v:klaviyo|n:1', 'e1', t), null, 'undo drops the decision');
+  assert.equal(RW.isAiUndone(s, 'a.com', 'v:klaviyo|n:1', t + RW.AI_UNDO_TTL + 1), false);
+  for (let i = 0; i < 50; i++) s = RW.rememberAiDecision(s, 'a.com', `other|n:${i}`, 'leave_unchanged', 'e1', t);
+  assert.ok(Object.keys(s.aiMemory.decisions['a.com']).length <= 30);
+  assert.deepEqual(RW.clearAiMemory(s).aiMemory, { decisions: {}, undone: {} });
+  const bad = RW.normalizeState({ aiMemory: { decisions: { 'a.com': { '<x>': { action: 'hide_overlay', at: Date.now(), epoch: 'e' } }, 'not a site': {} }, undone: 7 } });
+  assert.deepEqual(bad.aiMemory, { decisions: {}, undone: {} });
+});
+
+test('restoreSiteProfile undoes a described change exactly', () => {
+  let s = RW.setSiteTier(RW.createDefaultState(), 'a.com', 'strict', 1);
+  const snapshot = JSON.parse(JSON.stringify(s.siteProfiles['a.com']));
+  s = RW.setSiteNewsletter(s, 'a.com', 'hide', 2);
+  s = RW.setSiteCustomOption(s, 'a.com', 'stripUrlParams', false, 3);
+  s = RW.restoreSiteProfile(s, 'a.com', snapshot, 4);
+  assert.equal(s.siteProfiles['a.com'].tier, 'strict');
+  assert.equal(s.siteProfiles['a.com'].newsletterPrompts, 'auto');
+  assert.equal(RW.restoreSiteProfile(s, 'a.com', null, 5).siteProfiles['a.com'], undefined);
 });

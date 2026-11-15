@@ -6,7 +6,9 @@ importScripts(
   'shared/config.js',
   'shared/rules-compiler.js',
   'shared/cosmetic-lists.js',
-  'engines/cmp-main-world.js'
+  'shared/ai-policy.js',
+  'engines/cmp-main-world.js',
+  'engines/ai-broker.js'
 );
 
 const RW = self.RockyShared;
@@ -77,8 +79,53 @@ async function update(mutator, keys, opts) {
   configCache = new Map();
   await persist(keys);
   if (!opts || opts.rules !== false) await syncRules();
-  refreshOpenTabs();
+  if (!opts || !opts.quiet) {
+    refreshOpenTabs();
+    announceSettingsChange();
+  }
   return state;
+}
+
+// ---- automatic optimisation (model broker, per-tab cancellation)
+
+const broker = RW.createAiBroker();
+const aiJobs = new Map(); // tabId -> Set<AbortController>
+
+function trackAiJob(tabId) {
+  const ctrl = new AbortController();
+  if (!aiJobs.has(tabId)) aiJobs.set(tabId, new Set());
+  aiJobs.get(tabId).add(ctrl);
+  return ctrl;
+}
+
+function untrackAiJob(tabId, ctrl) {
+  const set = aiJobs.get(tabId);
+  if (set) { set.delete(ctrl); if (!set.size) aiJobs.delete(tabId); }
+}
+
+function cancelAiForTab(tabId) {
+  const set = aiJobs.get(tabId);
+  if (!set) return;
+  for (const c of set) c.abort();
+  aiJobs.delete(tabId);
+}
+
+function cancelAllAi() {
+  for (const tabId of [...aiJobs.keys()]) cancelAiForTab(tabId);
+  broker.cancelQueued();
+  broker.release();
+}
+
+// Tell open tabs that settings changed so they drop stale work (debounced).
+let announceTimer = 0;
+function announceSettingsChange() {
+  clearTimeout(announceTimer);
+  announceTimer = setTimeout(async () => {
+    const list = await chrome.tabs.query({}).catch(() => []);
+    for (const t of list) {
+      if (typeof t.id === 'number' && t.id >= 0) chrome.tabs.sendMessage(t.id, { action: A.MODE_CHANGED, payload: {} }).catch(noop);
+    }
+  }, 150);
 }
 
 // ---- declarativenetrequest synchronisation
@@ -147,7 +194,8 @@ function saveTabsSoon() {
   tabsTimer = setTimeout(() => {
     tabsTimer = 0;
     const obj = {};
-    for (const [id, rec] of tabs) obj[id] = rec;
+    // Private tabs (and tabs not yet identified) are never written anywhere.
+    for (const [id, rec] of tabs) if (rec.incognito === false) obj[id] = rec;
     chrome.storage.session.set({ tabActivity: obj }).catch(noop);
   }, 1000);
 }
@@ -161,11 +209,22 @@ function newTabRecord(url) {
     hostname: RW.normalizeHost(host),
     siteKey: cfg.siteKey,
     tier: cfg.tier,
+    incognito: null,
     ads: 0,
     trackers: 0,
     popup: null,
-    domains: {}
+    domains: {},
+    adjustments: []
   };
+}
+
+function startTabRecord(tabId, url) {
+  cancelAiForTab(tabId);
+  const rec = newTabRecord(url);
+  tabs.set(tabId, rec);
+  chrome.tabs.get(tabId).then((t) => { rec.incognito = !!t.incognito; saveTabsSoon(); }, noop);
+  updateBadge(tabId);
+  saveTabsSoon();
 }
 
 function touchDomain(rec, base, host) {
@@ -249,8 +308,9 @@ function setCookieHasId(value) {
 }
 
 function learnFrom(ctx) {
+  if (ctx.rec.incognito !== false) return; // never learn from private (or unidentified) tabs
   const cfg = configFor(ctx.rec.siteKey);
-  if (cfg.tier === 'off' || cfg.trackerHeuristicMode === 'off') return; // respect "no protection" sites
+  if (!RW.runtimeCapabilities(cfg, { incognito: false }).learning) return;
   if (RW.isNeverRestrict(ctx.base)) return;
   const res = RW.learnTracker(state, ctx.base, ctx.rec.siteKey, Date.now());
   if (res.changed) markDirty('learnedTrackers', 3000);
@@ -272,14 +332,11 @@ function countRestriction(ctx, tabId) {
   updateBadge(tabId);
 }
 
-chrome.webRequest.onBeforeRequest.addListener((d) => {
+function onBeforeAny(d) {
   if (d.tabId < 0) return;
   ready().then(() => {
     if (d.type === 'main_frame') {
-      if (d.documentLifecycle === 'prerender') return;
-      tabs.set(d.tabId, newTabRecord(d.url));
-      updateBadge(d.tabId);
-      saveTabsSoon();
+      if (d.documentLifecycle !== 'prerender') startTabRecord(d.tabId, d.url);
       return;
     }
     const ctx = thirdPartyContext(d);
@@ -287,9 +344,15 @@ chrome.webRequest.onBeforeRequest.addListener((d) => {
     ctx.dom.requests++;
     saveTabsSoon();
   }).catch(noop);
-}, WEB_FILTER);
+}
 
-chrome.webRequest.onSendHeaders.addListener((d) => {
+// Light mode keeps only this: one event per top-level navigation.
+function onBeforeMainFrame(d) {
+  if (d.tabId < 0 || d.documentLifecycle === 'prerender') return;
+  ready().then(() => startTabRecord(d.tabId, d.url)).catch(noop);
+}
+
+function onSendHeaders(d) {
   if (d.tabId < 0 || d.type === 'main_frame') return;
   ready().then(() => {
     const ctx = thirdPartyContext(d);
@@ -301,9 +364,9 @@ chrome.webRequest.onSendHeaders.addListener((d) => {
     }
     countRestriction(ctx, d.tabId);
   }).catch(noop);
-}, WEB_FILTER, ['requestHeaders', 'extraHeaders']);
+}
 
-chrome.webRequest.onHeadersReceived.addListener((d) => {
+function onHeadersReceived(d) {
   if (d.tabId < 0 || d.type === 'main_frame') return;
   ready().then(() => {
     const values = headerValues(d.responseHeaders, 'set-cookie');
@@ -313,9 +376,9 @@ chrome.webRequest.onHeadersReceived.addListener((d) => {
     ctx.dom.cookies = true;
     learnFrom(ctx);
   }).catch(noop);
-}, WEB_FILTER, ['responseHeaders', 'extraHeaders']);
+}
 
-chrome.webRequest.onErrorOccurred.addListener((d) => {
+function onRequestError(d) {
   if (d.tabId < 0 || d.type === 'main_frame' || d.error !== 'net::ERR_BLOCKED_BY_CLIENT') return;
   ready().then(() => {
     const rec = tabs.get(d.tabId);
@@ -336,9 +399,40 @@ chrome.webRequest.onErrorOccurred.addListener((d) => {
     updateBadge(d.tabId);
     saveTabsSoon();
   }).catch(noop);
-}, WEB_FILTER);
+}
+
+const MAIN_FRAME_FILTER = { urls: ['http://*/*', 'https://*/*'], types: ['main_frame'] };
+let observing = 'full';
+
+// Full mode watches every request and its headers (tracker learning); Light only watches navigations.
+function applyObservationMode() {
+  const want = state && state.operatingMode === 'light' ? 'light' : 'full';
+  if (want === observing) return;
+  const wr = chrome.webRequest;
+  if (want === 'light') {
+    wr.onBeforeRequest.removeListener(onBeforeAny);
+    wr.onSendHeaders.removeListener(onSendHeaders);
+    wr.onHeadersReceived.removeListener(onHeadersReceived);
+    wr.onBeforeRequest.addListener(onBeforeMainFrame, MAIN_FRAME_FILTER);
+    for (const rec of tabs.values()) rec.domains = {};
+  } else {
+    wr.onBeforeRequest.removeListener(onBeforeMainFrame);
+    wr.onBeforeRequest.addListener(onBeforeAny, WEB_FILTER);
+    wr.onSendHeaders.addListener(onSendHeaders, WEB_FILTER, ['requestHeaders', 'extraHeaders']);
+    wr.onHeadersReceived.addListener(onHeadersReceived, WEB_FILTER, ['responseHeaders', 'extraHeaders']);
+  }
+  observing = want;
+}
+
+// Listeners must be registered synchronously at start-up; Light mode detaches them once state loads.
+chrome.webRequest.onBeforeRequest.addListener(onBeforeAny, WEB_FILTER);
+chrome.webRequest.onSendHeaders.addListener(onSendHeaders, WEB_FILTER, ['requestHeaders', 'extraHeaders']);
+chrome.webRequest.onHeadersReceived.addListener(onHeadersReceived, WEB_FILTER, ['responseHeaders', 'extraHeaders']);
+chrome.webRequest.onErrorOccurred.addListener(onRequestError, WEB_FILTER);
+loadState().then(applyObservationMode).catch(noop);
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  cancelAiForTab(tabId);
   tabs.delete(tabId);
   saveTabsSoon();
 });
@@ -368,16 +462,23 @@ function frameTarget(sender) {
 }
 
 // Content scripts only get what they need.
-function contentConfig(cfg) {
+function contentConfig(cfg, incognito) {
+  const caps = RW.runtimeCapabilities(cfg, { incognito });
   return {
     supported: cfg.supported,
     hostname: cfg.hostname,
     siteKey: cfg.siteKey,
     tier: cfg.tier,
     consentMode: cfg.consentMode,
-    showToastBadge: cfg.showToastBadge
+    showToastBadge: cfg.showToastBadge,
+    light: cfg.operatingMode === 'light',
+    consentDepth: caps.consent,
+    newsletter: caps.newsletter,
+    epoch: RW.settingsEpoch(cfg)
   };
 }
+
+const isIncognito = (sender) => !!(sender.tab && sender.tab.incognito);
 
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max || 200) : '');
 
@@ -391,7 +492,7 @@ const HANDLERS = {
       const host = RW.hostFromUrl(topUrlOf(sender));
       const cfg = configFor(host);
       return {
-        config: contentConfig(cfg),
+        config: contentConfig(cfg, isIncognito(sender)),
         intent: RW.consentIntent(cfg),
         hasCosmetics: RW.buildCosmeticSelectors(cfg, cfg.hostname).length > 0
       };
@@ -417,9 +518,11 @@ const HANDLERS = {
       const intent = RW.consentIntent(cfg);
       if (!intent) return { result: { handled: false, reason: 'disabled' } };
       // Poll with short injections; a single long-running one would delay the page's load event.
+      // Light mode makes a single attempt.
       let raw = null;
-      const deadline = Date.now() + 8000;
-      while (Date.now() < deadline) {
+      const light = cfg.operatingMode === 'light';
+      const deadline = Date.now() + (light ? 0 : 8000);
+      for (let first = true; first || Date.now() < deadline; first = false) {
         try {
           const [res] = await chrome.scripting.executeScript({
             target: frameTarget(sender),
@@ -432,7 +535,7 @@ const HANDLERS = {
         } catch (err) {
           return { result: { handled: false, reason: 'inject_failed' } };
         }
-        if (!raw || raw.reason !== 'not_found') break;
+        if (!raw || raw.reason !== 'not_found' || light) break;
         await new Promise((r) => setTimeout(r, 400));
       }
       // The result comes from page-controlled JS: sanitise every field.
@@ -502,12 +605,168 @@ const HANDLERS = {
     }
   },
 
+  [A.AI_EVALUATE_CANDIDATE]: {
+    from: [FROM_CONTENT],
+    fn: async (p, sender) => {
+      const leave = (source, reason, epoch) => ({ outcome: 'leave_unchanged', source, reason, epoch });
+      if (sender.frameId !== 0) return leave('rule', 'subframe');
+      const sig = RW.sanitizeSignals(p.signals);
+      if (!sig) throw new Error('invalid_candidate');
+      const host = RW.hostFromUrl(topUrlOf(sender));
+      const cfg = configFor(host);
+      const caps = RW.runtimeCapabilities(cfg, { incognito: isIncognito(sender) });
+      const epoch = RW.settingsEpoch(cfg);
+      const verdict = RW.localVerdict(sig);
+      if (verdict.outcome !== 'ask') return leave('rule', verdict.reason, epoch);
+      if (caps.newsletter === 'hide') return { outcome: 'hide_overlay', source: 'your_choice', epoch };
+      if (caps.newsletter !== 'ai') return leave('rule', 'not_enabled', epoch);
+      if (RW.isAiUndone(state, cfg.siteKey, sig.signature)) return leave('rule', 'undone_before', epoch);
+      const key = RW.decisionKey(sig);
+      const remembered = RW.recallAiDecision(state, cfg.siteKey, key, epoch);
+      if (remembered) return { outcome: remembered, source: 'memory', epoch };
+      const tab = await chrome.tabs.get(sender.tab.id).catch(() => null);
+      if (!tab || !tab.active) return leave('rule', 'background_tab', epoch);
+
+      const ctrl = trackAiJob(sender.tab.id);
+      let res;
+      try {
+        res = await broker.prompt({
+          key: `${sender.tab.id}|${sender.documentId || ''}|${key}`,
+          prompt: RW.buildPrompt(sig),
+          schema: RW.responseSchema(sig.id),
+          signal: ctrl.signal
+        });
+      } finally {
+        untrackAiJob(sender.tab.id, ctrl);
+      }
+      if (!res.ok) return leave('model_unavailable', res.reason, epoch);
+      const decision = RW.parseDecision(res.text, sig.id);
+      if (!decision) { broker.stats.invalid++; return leave('rule', 'invalid_output', epoch); }
+      if (RW.settingsEpoch(configFor(host)) !== epoch) return leave('rule', 'settings_changed', epoch);
+      await update((st) => RW.rememberAiDecision(st, cfg.siteKey, key, decision.action, epoch, Date.now()), ['aiMemory'], { rules: false, quiet: true });
+      return { outcome: decision.action, source: 'model', epoch };
+    }
+  },
+
+  [A.AI_ADJUSTMENT_APPLIED]: {
+    from: [FROM_CONTENT],
+    fn: async (p, sender) => {
+      if (sender.frameId !== 0) throw new Error('top_frame_only');
+      const rec = tabs.get(sender.tab.id);
+      if (!rec) return {};
+      const id = /^a[0-9a-z]{4,12}$/.test(p.id) ? p.id : null;
+      const signature = /^[a-z0-9:|._-]{1,120}$/.test(p.signature) ? p.signature : null;
+      if (!id || !signature) throw new Error('invalid_adjustment');
+      rec.adjustments = (rec.adjustments || []).filter((a) => a.id !== id).slice(-9);
+      rec.adjustments.push({
+        id,
+        signature,
+        kind: RW.AI_KIND,
+        source: ['model', 'memory', 'your_choice'].includes(p.source) ? p.source : 'model',
+        at: Date.now()
+      });
+      saveTabsSoon();
+      return {};
+    }
+  },
+
+  [A.AI_UNDO_ADJUSTMENT]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      const tabId = Number(p.tabId);
+      const rec = tabs.get(tabId);
+      const adj = rec && (rec.adjustments || []).find((a) => a.id === p.id);
+      if (!adj) throw new Error('not_found');
+      await chrome.tabs.sendMessage(tabId, { action: A.AI_REVERT, payload: { id: adj.id } }, { frameId: 0 }).catch(noop);
+      rec.adjustments = rec.adjustments.filter((a) => a.id !== adj.id);
+      saveTabsSoon();
+      // Remember the undo so the same overlay is not hidden again on later visits.
+      if (adj.source !== 'your_choice') {
+        await update((st) => RW.markAiUndone(st, rec.siteKey, adj.signature, Date.now()), ['aiMemory'], { rules: false, quiet: true });
+      }
+      return {};
+    }
+  },
+
+  [A.AI_SITE_OPT_OUT]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      const tabId = Number(p.tabId);
+      const rec = tabs.get(tabId);
+      if (!rec || !rec.siteKey) throw new Error('not_found');
+      for (const adj of rec.adjustments || []) {
+        await chrome.tabs.sendMessage(tabId, { action: A.AI_REVERT, payload: { id: adj.id } }, { frameId: 0 }).catch(noop);
+      }
+      rec.adjustments = [];
+      saveTabsSoon();
+      await update((st) => RW.setSiteNewsletter(st, rec.siteKey, 'keep', Date.now()), ['siteProfiles'], { rules: false });
+      return {};
+    }
+  },
+
+  [A.GET_AI_STATUS]: {
+    from: [FROM_PAGE],
+    fn: async () => ({
+      availability: await broker.availability(),
+      preference: !!state.aiSettings.autoOptimise,
+      operatingMode: state.operatingMode,
+      stats: Object.assign({}, broker.stats),
+      hasSession: broker.hasSession,
+      pending: broker.pending
+    })
+  },
+
+  [A.SET_AI_AUTO_OPTIMISE]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      const enabled = p.enabled === true;
+      if (!enabled) cancelAllAi();
+      await update((st) => RW.setAiAutoOptimise(st, enabled), ['aiSettings'], { rules: false });
+      return {};
+    }
+  },
+
+  [A.CLEAR_AI_MEMORY]: {
+    from: [FROM_PAGE],
+    fn: async () => {
+      await update((st) => RW.clearAiMemory(st), ['aiMemory'], { rules: false });
+      return {};
+    }
+  },
+
+  [A.SET_OPERATING_MODE]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      if (p.mode === 'light') cancelAllAi();
+      await update((st) => RW.setOperatingMode(st, p.mode), ['operatingMode'], { rules: false });
+      applyObservationMode();
+      return {};
+    }
+  },
+
+  [A.SET_SITE_NEWSLETTER]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      await update((st) => RW.setSiteNewsletter(st, str(p.siteKey, 253), p.value, Date.now()), ['siteProfiles'], { rules: false });
+      return {};
+    }
+  },
+
+  [A.RESTORE_SITE_PROFILE]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      const profile = p.profile && typeof p.profile === 'object' ? p.profile : null;
+      await update((st) => RW.restoreSiteProfile(st, str(p.siteKey, 253), profile, Date.now()), ['siteProfiles']);
+      return {};
+    }
+  },
+
   [A.GET_POPUP_STATE]: {
     from: [FROM_PAGE],
     fn: async (p) => {
       const tab = await chrome.tabs.get(Number(p.tabId));
       const host = RW.hostFromUrl(tab.url || '');
-      if (!host) return { supported: false, url: str(tab.url || '', 300), totals: state.stats, globalDefaultTier: state.globalDefaultTier };
+      if (!host) return { supported: false, url: str(tab.url || '', 300), totals: state.stats, globalDefaultTier: state.globalDefaultTier, operatingMode: state.operatingMode };
       const cfg = RW.getEffectiveConfig(state, host);
       const profile = state.siteProfiles[cfg.siteKey] || null;
       const recRaw = tabs.get(tab.id);
@@ -542,7 +801,11 @@ const HANDLERS = {
         globalConfig: RW.getEffectiveConfig(state, null),
         tabStats: rec ? { ads: rec.ads, trackers: rec.trackers, popup: rec.popup } : { ads: 0, trackers: 0, popup: null },
         trackers: trackers.slice(0, 150),
-        totals: state.stats
+        totals: state.stats,
+        operatingMode: state.operatingMode,
+        capabilities: RW.runtimeCapabilities(cfg, { incognito: !!tab.incognito }),
+        incognito: !!tab.incognito,
+        adjustments: rec ? (rec.adjustments || []).map((a) => ({ id: a.id, kind: a.kind, source: a.source, at: a.at })) : []
       };
     }
   },
@@ -695,8 +958,17 @@ const HANDLERS = {
   [A.RESET_ALL]: {
     from: [FROM_PAGE],
     fn: async () => {
+      cancelAllAi();
+      tabs.clear();
+      clearTimeout(tabsTimer);
+      tabsTimer = 0;
+      await chrome.storage.session.clear().catch(noop);
       await chrome.storage.local.clear();
       await update(() => RW.createDefaultState(), RW.STORAGE_KEYS);
+      applyObservationMode();
+      await chrome.action.setBadgeText({ text: '' }).catch(noop);
+      const open = await chrome.tabs.query({}).catch(() => []);
+      for (const t of open) if (typeof t.id === 'number' && t.id >= 0) chrome.action.setBadgeText({ tabId: t.id, text: '' }).catch(noop);
       return {};
     }
   }
@@ -726,6 +998,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 chrome.runtime.onInstalled.addListener((details) => {
   loadState()
     .then(() => persist(RW.STORAGE_KEYS))
+    .then(applyObservationMode)
     .then(syncRules)
     .then(() => log(`ready (${details.reason})`))
     .catch((err) => warn('install init failed', err));

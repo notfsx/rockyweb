@@ -7,6 +7,8 @@
   const CONSENT_MODES = ['off', 'custom_categories', 'strict_reject'];
   const HEURISTIC_MODES = ['off', 'cookie_strip', 'hard_block'];
   const SLIDER_STATES = ['allow', 'cookie_block', 'block'];
+  const OPERATING_MODES = ['full', 'light'];
+  const NEWSLETTER_CHOICES = ['auto', 'hide', 'keep'];
   const LEARNED_STATUSES = ['allow', 'cookie_block', 'block'];
   const CATEGORY_KEYS = ['functional', 'analytics', 'marketing'];
   const BOOLEAN_KEYS = ['adBlockNetwork', 'cosmeticFiltering', 'aggressiveFiltering', 'stripUrlParams'];
@@ -35,8 +37,14 @@
     cosmeticFiltering: true,
     aggressiveFiltering: false,
     stripUrlParams: true,
-    showToastBadge: true
+    showToastBadge: false // new installs are silent; a saved preference is kept
   });
+
+  // Bounds for the automatic adjustment memory.
+  const AI_DECISION_TTL = 7 * 86400e3;
+  const AI_UNDO_TTL = 30 * 86400e3;
+  const AI_MAX_SITES = 200;
+  const AI_MAX_PER_SITE = 30;
 
   // Consent categories for presets come from the user's saved choices.
   const TIER_PRESETS = Object.freeze({
@@ -164,14 +172,16 @@
       updatedAt: finiteOr(src.updatedAt, 0),
       customOverrides: sanitizeOverrides(src.customOverrides),
       domainSliderOverrides: sanitizeSliders(src.domainSliderOverrides),
-      customCosmeticSelectors: sanitizeSelectors(src.customCosmeticSelectors)
+      customCosmeticSelectors: sanitizeSelectors(src.customCosmeticSelectors),
+      newsletterPrompts: NEWSLETTER_CHOICES.includes(src.newsletterPrompts) ? src.newsletterPrompts : 'auto'
     };
   }
 
   function isProfileEmpty(p) {
     return !p || (!p.tier &&
       Object.keys(p.domainSliderOverrides || {}).length === 0 &&
-      (p.customCosmeticSelectors || []).length === 0);
+      (p.customCosmeticSelectors || []).length === 0 &&
+      (!p.newsletterPrompts || p.newsletterPrompts === 'auto'));
   }
 
   function sanitizeTracker(raw) {
@@ -200,6 +210,33 @@
     };
   }
 
+  const SIG_RE = /^[a-z0-9:|._-]{1,120}$/;
+
+  function sanitizeAiMemory(raw, now) {
+    const t = finiteOr(now, Date.now());
+    const src = isObj(raw) ? raw : {};
+    const out = { decisions: {}, undone: {} };
+    const sites = (obj) => (isObj(obj) ? Object.entries(obj).filter(([k]) => RW.isValidDomain(k)).slice(0, AI_MAX_SITES) : []);
+    for (const [site, entries] of sites(src.decisions)) {
+      const keep = {};
+      for (const [k, v] of Object.entries(isObj(entries) ? entries : {}).slice(0, AI_MAX_PER_SITE)) {
+        if (!SIG_RE.test(k) || !isObj(v) || !['hide_overlay', 'leave_unchanged'].includes(v.action)) continue;
+        const at = finiteOr(v.at, 0);
+        if (t - at > AI_DECISION_TTL || typeof v.epoch !== 'string') continue;
+        keep[k] = { action: v.action, at, epoch: v.epoch.slice(0, 16) };
+      }
+      if (Object.keys(keep).length) out.decisions[site] = keep;
+    }
+    for (const [site, entries] of sites(src.undone)) {
+      const keep = {};
+      for (const [k, exp] of Object.entries(isObj(entries) ? entries : {}).slice(0, AI_MAX_PER_SITE)) {
+        if (SIG_RE.test(k) && finiteOr(exp, 0) > t) keep[k] = exp;
+      }
+      if (Object.keys(keep).length) out.undone[site] = keep;
+    }
+    return out;
+  }
+
   // Turns anything (fresh install, old schema, imported file) into a complete, valid state.
   function normalizeState(raw) {
     const src = isObj(raw) ? raw : {};
@@ -225,7 +262,10 @@
       globalCustomConfig: sanitizeCustomConfig(src.globalCustomConfig),
       siteProfiles,
       learnedTrackers,
-      stats: sanitizeStats(src.stats)
+      stats: sanitizeStats(src.stats),
+      operatingMode: OPERATING_MODES.includes(src.operatingMode) ? src.operatingMode : 'full',
+      aiSettings: { autoOptimise: !!(isObj(src.aiSettings) && src.aiSettings.autoOptimise === true) },
+      aiMemory: sanitizeAiMemory(src.aiMemory)
     };
   }
 
@@ -273,8 +313,47 @@
       globalDefaultTier: s.globalDefaultTier,
       showToastBadge: s.globalCustomConfig.showToastBadge !== false,
       domainSliderOverrides: profile ? clone(profile.domainSliderOverrides) : {},
-      customCosmeticSelectors: profile ? profile.customCosmeticSelectors.slice() : []
+      customCosmeticSelectors: profile ? profile.customCosmeticSelectors.slice() : [],
+      newsletterPrompts: profile && profile.newsletterPrompts ? profile.newsletterPrompts : 'auto',
+      operatingMode: s.operatingMode || 'full',
+      aiPreference: !!(s.aiSettings && s.aiSettings.autoOptimise)
     });
+  }
+
+  // The one place that decides what actually runs, in this order:
+  //   1. explicit user choices (newsletter hide / leave alone, per-domain choices, saved categories)
+  //   2. the site policy (off, consent, balanced, strict, custom)
+  //   3. the global operating mode (Light trims work, never explicit choices or declarative blocking)
+  //   4. the AI preference (only adds reversible, page-scoped adjustments)
+  function runtimeCapabilities(cfg, ctx) {
+    const c = ctx || {};
+    const active = !!cfg && cfg.supported !== false && cfg.tier !== 'off';
+    const light = cfg && cfg.operatingMode === 'light';
+    const incognito = !!c.incognito;
+    const consent = !active || cfg.consentMode === 'off' ? 'off' : light ? 'bounded' : 'full';
+    const hidingAllowed = active && cfg.tier !== 'consent_only' && cfg.cosmeticFiltering;
+    let newsletter = 'off';
+    if (active && cfg.newsletterPrompts === 'hide') newsletter = 'hide';
+    else if (hidingAllowed && cfg.newsletterPrompts === 'auto' && cfg.aiPreference && !light && !incognito) newsletter = 'ai';
+    let aiPausedReason = null;
+    if (cfg && cfg.aiPreference) aiPausedReason = light ? 'light' : incognito ? 'incognito' : null;
+    return {
+      consent,
+      learning: active && !light && !incognito && cfg.trackerHeuristicMode !== 'off',
+      headerObservation: !light,
+      newsletter,
+      ai: newsletter === 'ai',
+      aiPausedReason
+    };
+  }
+
+  // Short hash of the settings an automatic decision depends on. A change invalidates remembered decisions.
+  function settingsEpoch(cfg) {
+    const basis = JSON.stringify([cfg.tier, cfg.cosmeticFiltering, cfg.aggressiveFiltering, cfg.newsletterPrompts,
+      cfg.operatingMode, cfg.aiPreference, cfg.consentMode, cfg.consentCategories]);
+    let h = 0x811c9dc5;
+    for (let i = 0; i < basis.length; i++) { h ^= basis.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16).padStart(8, '0');
   }
 
   function anyNetwork(cfg) {
@@ -288,7 +367,7 @@
       ? { necessary: true, functional: false, analytics: false, marketing: false }
       : sanitizeCategories(cfg.consentCategories);
     let decision = 'custom';
-    if (!categories.analytics && !categories.marketing) decision = 'reject';
+    if (!categories.functional && !categories.analytics && !categories.marketing) decision = 'reject';
     else if (categories.functional && categories.analytics && categories.marketing) decision = 'accept';
     return { decision, categories, strict };
   }
@@ -455,6 +534,76 @@
     }, now);
   }
 
+  function setSiteNewsletter(state, siteKey, value, now) {
+    if (!NEWSLETTER_CHOICES.includes(value)) throw new Error('invalid_value');
+    return withProfile(state, siteKey, (p) => { p.newsletterPrompts = value; return p; }, now);
+  }
+
+  // Puts a site's profile back exactly as it was (used to undo a described change). null removes it.
+  function restoreSiteProfile(state, siteKey, profile, now) {
+    const key = RW.siteKeyForHost(siteKey);
+    if (!RW.isValidDomain(key)) throw new Error('invalid_site');
+    const siteProfiles = Object.assign({}, state.siteProfiles);
+    const prof = profile ? sanitizeProfile(profile) : null;
+    if (!prof || isProfileEmpty(prof)) delete siteProfiles[key];
+    else siteProfiles[key] = Object.assign(prof, { updatedAt: finiteOr(now, Date.now()) });
+    return Object.assign({}, state, { siteProfiles });
+  }
+
+  function setOperatingMode(state, mode) {
+    if (!OPERATING_MODES.includes(mode)) throw new Error('invalid_value');
+    return Object.assign({}, state, { operatingMode: mode });
+  }
+
+  function setAiAutoOptimise(state, enabled) {
+    return Object.assign({}, state, { aiSettings: { autoOptimise: enabled === true } });
+  }
+
+  function aiSite(map, siteKey) {
+    return (map && map[siteKey]) || {};
+  }
+
+  function recallAiDecision(state, siteKey, key, epoch, now) {
+    const e = aiSite(state.aiMemory.decisions, siteKey)[key];
+    if (!e || e.epoch !== epoch || finiteOr(now, Date.now()) - e.at > AI_DECISION_TTL) return null;
+    return e.action;
+  }
+
+  function isAiUndone(state, siteKey, signature, now) {
+    const exp = aiSite(state.aiMemory.undone, siteKey)[signature];
+    return !!exp && exp > finiteOr(now, Date.now());
+  }
+
+  function withAiMemory(state, part, siteKey, fn, now) {
+    const mem = clone(state.aiMemory);
+    const site = Object.assign({}, mem[part][siteKey] || {});
+    fn(site);
+    const keys = Object.keys(site);
+    if (keys.length > AI_MAX_PER_SITE) for (const k of keys.slice(0, keys.length - AI_MAX_PER_SITE)) delete site[k];
+    if (Object.keys(site).length) mem[part][siteKey] = site; else delete mem[part][siteKey];
+    return Object.assign({}, state, { aiMemory: sanitizeAiMemory(mem, now) });
+  }
+
+  function rememberAiDecision(state, siteKey, key, action, epoch, now) {
+    return withAiMemory(state, 'decisions', siteKey, (site) => {
+      delete site[key];
+      site[key] = { action, at: finiteOr(now, Date.now()), epoch };
+    }, now);
+  }
+
+  function markAiUndone(state, siteKey, signature, now) {
+    const t = finiteOr(now, Date.now());
+    let next = withAiMemory(state, 'undone', siteKey, (site) => { site[signature] = t + AI_UNDO_TTL; }, t);
+    next = withAiMemory(next, 'decisions', siteKey, (site) => {
+      for (const k of Object.keys(site)) if (k.endsWith(`|${signature}`)) delete site[k];
+    }, t);
+    return next;
+  }
+
+  function clearAiMemory(state) {
+    return Object.assign({}, state, { aiMemory: { decisions: {}, undone: {} } });
+  }
+
   function learnTracker(state, trackerDomain, firstPartySite, now) {
     const d = String(trackerDomain || '').toLowerCase();
     const site = String(firstPartySite || '').toLowerCase();
@@ -489,6 +638,10 @@
 
   Object.assign(RW, {
     TIERS,
+    OPERATING_MODES,
+    NEWSLETTER_CHOICES,
+    AI_DECISION_TTL,
+    AI_UNDO_TTL,
     CONSENT_MODES,
     HEURISTIC_MODES,
     SLIDER_STATES,
@@ -513,6 +666,18 @@
     getEffectiveConfig,
     anyNetwork,
     consentIntent,
+    runtimeCapabilities,
+    settingsEpoch,
+    sanitizeAiMemory,
+    setSiteNewsletter,
+    restoreSiteProfile,
+    setOperatingMode,
+    setAiAutoOptimise,
+    recallAiDecision,
+    rememberAiDecision,
+    isAiUndone,
+    markAiUndone,
+    clearAiMemory,
     setSiteTier,
     setSiteCustomOption,
     resetSiteProfile,

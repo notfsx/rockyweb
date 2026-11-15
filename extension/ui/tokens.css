@@ -14,7 +14,8 @@
   --text: #f3e9dc;        /* cream fur */
   --error: #f1cc80;       /* honey */
   --line: rgba(196, 173, 150, 0.12);
-  --radius: 8px;
+  --radius: 10px;
+  --radius-s: 7px; /* small controls inside a bar */
   --font: "Lexend Deca", ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -36,7 +37,7 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 
 /* config bar: rounded strip of text buttons, active one in the main colour */
 .bar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px 6px; border-radius: var(--radius); background: var(--sub-alt); }
-.bar button { border: 0; background: none; padding: 5px 8px; border-radius: 6px; color: var(--sub-dim); font-size: 13px; transition: color 0.12s; }
+.bar button { border: 0; background: none; padding: 5px 8px; border-radius: var(--radius-s); color: var(--sub-dim); font-size: 13px; transition: color 0.12s; }
 .bar button:hover { color: var(--text); }
 .bar button[aria-checked="true"] { color: var(--main); }
 .bar[aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
@@ -56,10 +57,11 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 .switch[aria-checked="true"] { background: var(--main); }
 .switch[aria-checked="true"]::after { transform: translateX(18px); background: var(--bg); }
 .switch[disabled] { opacity: 0.4; cursor: not-allowed; }
+.btn[disabled], .bar button[disabled] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
 /* per-domain 3-way choice */
-.tri { display: inline-flex; gap: 0; padding: 2px; border-radius: 6px; background: var(--sub-alt); }
-.tri button { border: 0; background: none; padding: 3px 7px; border-radius: 5px; font-size: 11.5px; color: var(--sub-dim); }
+.tri { display: inline-flex; gap: 0; padding: 2px; border-radius: 8px; background: var(--sub-alt); }
+.tri button { border: 0; background: none; padding: 3px 7px; border-radius: 6px; font-size: 11.5px; color: var(--sub-dim); }
 .tri button:hover { color: var(--text); }
 .tri button[aria-checked="true"][data-v="allow"] { color: var(--sub); }
 .tri button[aria-checked="true"][data-v="cookie_block"] { color: var(--error); }
@@ -69,7 +71,7 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 .input { height: 32px; padding: 0 10px; border: 0; border-radius: var(--radius); background: var(--sub-alt); color: var(--text); min-width: 0; }
 .input::placeholder { color: var(--sub-dim); }
 .input:focus { outline: 2px solid var(--sub-alt-2); }
-.select { height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--sub-alt); color: var(--text); }
+.select { height: 30px; padding: 0 8px; border: 0; border-radius: var(--radius-s); background: var(--sub-alt); color: var(--text); }
 
 .sub { color: var(--sub); }
 .dim { color: var(--sub-dim); }

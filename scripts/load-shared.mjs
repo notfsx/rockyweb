@@ -15,7 +15,9 @@ export function loadShared() {
     'shared/config.js',
     'shared/rules-compiler.js',
     'shared/cosmetic-lists.js',
-    'engines/consent-rules.js'
+    'shared/ai-policy.js',
+    'engines/consent-rules.js',
+    'engines/ai-broker.js'
   ]) {
     require(path.join(EXT_DIR, f));
   }

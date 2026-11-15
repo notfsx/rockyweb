@@ -1,6 +1,6 @@
 # Rockyweb
 
-A Manifest V3 Chrome extension that answers cookie popups with your choices, blocks ads and trackers, and lets you hide anything on a page with a click. Named after Rocky, a cocker spaniel.
+A Manifest V3 Chrome extension that answers cookie popups with your choices, blocks ads and trackers, and lets you hide anything on a page with a click. Named after Rocky, a British cocker spaniel. Set your preferences once and get on with browsing.
 
 The loadable extension is the **`extension/`** folder. Everything else is tooling and is not shipped.
 
@@ -18,6 +18,38 @@ Chrome 116 or newer. No build step is needed.
 - **Gear icon in the popup:** per-engine switches, cookie categories, an allow / cookies / block choice for every third-party domain, the element picker and a link to settings.
 - **Element picker:** click to hide, arrow keys to widen or narrow, Ctrl+Z (Cmd+Z on Mac) to undo, Esc when done. Hidden elements are remembered per site.
 - **Settings page:** default mode, cookie choices, custom mode, websites, learned trackers, hidden elements, and data (stats, export, import, reset).
+
+## Automatic optimisation (optional, on-device AI)
+
+Off by default. Turn on "automatically optimise protection for each site" on the settings page and Rockyweb quietly makes small, reversible, page-scoped adjustments where the right answer depends on context. The first one shipped: hiding an unsolicited newsletter overlay on an article, while leaving the same kind of form alone on account, login and checkout pages, when you opened it yourself, or while you are typing in it.
+
+- **Model:** Chrome's built-in Gemini Nano through the `LanguageModel` API, run from the extension service worker (exposed there from Chrome 138, confirmed on Chrome 153). No cloud, accounts, keys or telemetry.
+- **Only when needed:** cheap local rules first. The model is asked only about an overlay that passed every rule and is still ambiguous; an ordinary page makes zero model calls.
+- **Bounded authority:**
+  - The model picks `hide_overlay` or `leave_unchanged` for one candidate ID, through a fixed JSON schema.
+  - It never supplies selectors, code, URLs or network rules.
+  - Low confidence, extra fields or anything stale are discarded.
+  - The page is rechecked before anything is applied.
+- **What the model sees:** compact signals (page type, position, field count, interaction state, a short heading treated as untrusted data). Never form values, passwords, cookies, URL query strings or history.
+- **Memory:** a decision is remembered for that site and page type for 7 days, and an undo for 30 days. Both are invalidated when relevant settings change.
+- **Undo:** the toolbar popup shows "automatic adjustments" with "undo" and "don't do this on this site". There are no on-page notifications.
+- **Never** runs in Incognito or in Light mode, and never overrides your explicit choices (cookie categories, saved consent, site and domain choices, "newsletter prompts" set to hide or leave alone).
+- **Describe a change** (popup, gear) is a separate, optional convenience: type a request, see a preview in Rockyweb's own terms, confirm, undo.
+
+On a machine without Nano everything else works as before; the AI controls are greyed out with an explanation.
+
+## Light mode
+
+A global operating choice, separate from the per-site modes. Precedence (in `runtimeCapabilities()`): your explicit choices, then the site's mode, then Light, then automatic optimisation.
+
+- **Kept:** declarative blocking, link cleaning, element hiding, your site settings, and explicit newsletter choices.
+- **Paused:**
+  - AI;
+  - tracker learning and request header observation (only top-level navigations are observed);
+  - the third-party domain list;
+  - deep page scanning and retries.
+- **Cookie popups:** answered only for the consent platforms Rockyweb recognises, with one API attempt and three checks per page; unknown banners are left alone.
+- Switching on stops pending work in open tabs; switching off restores everything.
 
 ## Protection modes
 
@@ -74,6 +106,14 @@ npm run package        # verify, then build dist/rockyweb-<version>.zip for the 
 ```
 
 ```bash
+npm run perf           # compare Light, Full with AI off and Full with automatic optimisation
+```
+
+```bash
+npm run test:nano      # real Gemini Nano on your own machine (see tests/nano/run-real-nano.mjs)
+```
+
+```bash
 npm run store:assets   # regenerate the store screenshots and promo tiles (needs Playwright)
 ```
 
@@ -103,3 +143,5 @@ tests/          unit tests and the end-to-end suite
 - When a banner offers only reject or accept, "necessary and functional only" is answered with reject.
 - Learned-tracker rules are scoped by the requesting frame, so a cross-site iframe follows its own site's settings.
 - The stand-in scripts are web accessible, which lets a page detect that the extension is installed.
+- The browser suites use a deterministic model double in place of `LanguageModel`. Real Nano inference has to be checked on an eligible machine with `npm run test:nano`.
+- Choices you make yourself in an Incognito window (for example a site's mode) are saved like any other choice. Rockyweb never learns from or records private browsing on its own.
