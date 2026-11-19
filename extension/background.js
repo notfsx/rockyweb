@@ -7,6 +7,7 @@ importScripts(
   'shared/rules-compiler.js',
   'shared/cosmetic-lists.js',
   'shared/ai-policy.js',
+  'shared/page-edits.js',
   'engines/cmp-main-world.js',
   'engines/ai-broker.js'
 );
@@ -89,6 +90,25 @@ async function update(mutator, keys, opts) {
 // ---- automatic optimisation (model broker, per-tab cancellation)
 
 const broker = RW.createAiBroker();
+
+// Unknown cookie banners: one broker per page language, each asking the model with that language as
+// an expected input, so availability() says whether the language is supported.
+const CONSENT_FAILED = 'consent-failed';
+const consentBrokers = new Map();
+const consentStats = { attempts: 0, verified: 0, failed: 0 };
+function consentBrokerFor(lang) {
+  if (!consentBrokers.has(lang)) {
+    if (consentBrokers.size >= 16) return null;
+    consentBrokers.set(lang, RW.createAiBroker({
+      systemPrompt: RW.AI_CONSENT_SYSTEM_PROMPT,
+      modelOptions: {
+        expectedInputs: [{ type: 'text', languages: lang === 'en' ? ['en'] : ['en', lang] }],
+        expectedOutputs: [{ type: 'text', languages: ['en'] }]
+      }
+    }));
+  }
+  return consentBrokers.get(lang);
+}
 const aiJobs = new Map(); // tabId -> Set<AbortController>
 
 function trackAiJob(tabId) {
@@ -112,8 +132,7 @@ function cancelAiForTab(tabId) {
 
 function cancelAllAi() {
   for (const tabId of [...aiJobs.keys()]) cancelAiForTab(tabId);
-  broker.cancelQueued();
-  broker.release();
+  for (const b of [broker, ...consentBrokers.values()]) { b.cancelQueued(); b.release(); }
 }
 
 // Tell open tabs that settings changed so they drop stale work (debounced).
@@ -189,15 +208,17 @@ function loadTabs() {
   return tabsLoad;
 }
 
+function saveTabsNow() {
+  clearTimeout(tabsTimer);
+  tabsTimer = 0;
+  const obj = {};
+  // Private tabs (and tabs not yet identified) are never written anywhere.
+  for (const [id, rec] of tabs) if (rec.incognito === false) obj[id] = rec;
+  return chrome.storage.session.set({ tabActivity: obj }).catch(noop);
+}
+
 function saveTabsSoon() {
-  if (tabsTimer) return;
-  tabsTimer = setTimeout(() => {
-    tabsTimer = 0;
-    const obj = {};
-    // Private tabs (and tabs not yet identified) are never written anywhere.
-    for (const [id, rec] of tabs) if (rec.incognito === false) obj[id] = rec;
-    chrome.storage.session.set({ tabActivity: obj }).catch(noop);
-  }, 1000);
+  if (!tabsTimer) tabsTimer = setTimeout(saveTabsNow, 1000);
 }
 
 const ready = () => Promise.all([loadState(), loadTabs()]);
@@ -218,13 +239,37 @@ function newTabRecord(url) {
   };
 }
 
-function startTabRecord(tabId, url) {
+function startTabRecord(tabId, url, at) {
+  // After a worker restart a queued navigation event can arrive after the page has already reported
+  // (and so rebuilt its record). A request older than the record belongs to that same page.
+  const old = tabs.get(tabId);
+  if (old && at && old.navAt && at <= old.navAt && old.hostname === RW.normalizeHost(RW.hostFromUrl(url))) return;
   cancelAiForTab(tabId);
   const rec = newTabRecord(url);
+  rec.navAt = at || Date.now();
   tabs.set(tabId, rec);
   chrome.tabs.get(tabId).then((t) => { rec.incognito = !!t.incognito; saveTabsSoon(); }, noop);
   updateBadge(tabId);
   saveTabsSoon();
+}
+
+// The tab's record, rebuilt from the sender when a stopped worker lost it before it was saved.
+function recordForSender(sender) {
+  const tabId = sender.tab && sender.tab.id;
+  if (typeof tabId !== 'number') return null;
+  let rec = tabs.get(tabId);
+  if (rec && rec.incognito === null) rec.incognito = !!sender.tab.incognito;
+  const url = topUrlOf(sender);
+  // A record from the previous site means its navigation event was lost while the worker was stopped.
+  if (rec && /^https?:/.test(url) && rec.siteKey !== RW.siteKeyForUrl(url)) rec = null;
+  if (!rec && /^https?:/.test(url)) {
+    rec = newTabRecord(url);
+    rec.navAt = Date.now(); // the page exists now, so its navigation started earlier
+    rec.incognito = !!sender.tab.incognito;
+    tabs.set(tabId, rec);
+    saveTabsSoon();
+  }
+  return rec || null;
 }
 
 function touchDomain(rec, base, host) {
@@ -336,7 +381,7 @@ function onBeforeAny(d) {
   if (d.tabId < 0) return;
   ready().then(() => {
     if (d.type === 'main_frame') {
-      if (d.documentLifecycle !== 'prerender') startTabRecord(d.tabId, d.url);
+      if (d.documentLifecycle !== 'prerender') startTabRecord(d.tabId, d.url, d.timeStamp);
       return;
     }
     const ctx = thirdPartyContext(d);
@@ -349,7 +394,7 @@ function onBeforeAny(d) {
 // Light mode keeps only this: one event per top-level navigation.
 function onBeforeMainFrame(d) {
   if (d.tabId < 0 || d.documentLifecycle === 'prerender') return;
-  ready().then(() => startTabRecord(d.tabId, d.url)).catch(noop);
+  ready().then(() => startTabRecord(d.tabId, d.url, d.timeStamp)).catch(noop);
 }
 
 function onSendHeaders(d) {
@@ -474,11 +519,104 @@ function contentConfig(cfg, incognito) {
     light: cfg.operatingMode === 'light',
     consentDepth: caps.consent,
     newsletter: caps.newsletter,
+    consentAi: caps.consentAi,
+    pageFixes: caps.pageFixes,
     epoch: RW.settingsEpoch(cfg)
   };
 }
 
 const isIncognito = (sender) => !!(sender.tab && sender.tab.incognito);
+
+// ---- page edits: saved per site, applied at user origin, every one listed and reversible
+
+// Proactive fixes ask a model with their own instructions; the broker is made on first use.
+let fixBroker = null;
+const fixBrokerFor = () => fixBroker || (fixBroker = RW.createAiBroker({ systemPrompt: RW.PAGE_FIX_SYSTEM_PROMPT }));
+
+const editsFor = (siteKey) => RW.pageEditsFor(state, siteKey);
+const editCss = (edit) => RW.buildPageEditCss(edit);
+
+// The CSS of one edit into, or out of, one tab's top frame.
+function setEditCss(tabId, edit, on) {
+  const css = editCss(edit);
+  if (!css) return Promise.resolve();
+  const call = on ? chrome.scripting.insertCSS : chrome.scripting.removeCSS;
+  return call({ target: { tabId, frameIds: [0] }, css, origin: 'USER' }).catch(noop);
+}
+
+// Every open tab on the site gets the change at once, and its content script rechecks.
+async function pushEdit(siteKey, edit, on) {
+  for (const [tabId, rec] of tabs) {
+    if (rec.siteKey !== siteKey) continue;
+    await setEditCss(tabId, edit, on);
+    chrome.tabs.sendMessage(tabId, { action: A.PAGE_EDITS_CHANGED, payload: {} }, { frameId: 0 }).catch(noop);
+  }
+}
+
+// Settings carried by a described change. Each keeps the value it replaced, so switching the change
+// off puts back exactly what it changed, and nothing you have changed since.
+function applySettingChanges(st, siteKey, changes) {
+  let next = st;
+  const now = Date.now();
+  for (const c of changes) {
+    if (c.op === 'site_mode') next = RW.setSiteTier(next, siteKey, c.value, now);
+    else if (c.op === 'newsletter_prompts') next = RW.setSiteNewsletter(next, siteKey, c.value, now);
+    else if (c.op === 'setting') next = RW.setSiteCustomOption(next, siteKey, c.key, c.value, now);
+  }
+  return next;
+}
+
+function currentValue(st, siteKey, c) {
+  const cfg = RW.getEffectiveConfig(st, siteKey);
+  if (c.op === 'site_mode') return cfg.tier;
+  if (c.op === 'newsletter_prompts') return cfg.newsletterPrompts;
+  return cfg[c.key];
+}
+
+function revertSettingChanges(st, siteKey, changes) {
+  const back = [];
+  for (const c of changes.slice().reverse()) {
+    if (c.prev === undefined || currentValue(st, siteKey, c) !== c.value) continue;
+    back.push(Object.assign({}, c, { value: c.prev }));
+  }
+  return applySettingChanges(st, siteKey, back);
+}
+
+function withPrev(st, siteKey, changes) {
+  return changes.map((c) => Object.assign({}, c, { prev: currentValue(st, siteKey, c) }));
+}
+
+function siteKeyOf(p) {
+  const key = RW.siteKeyForHost(str(p.siteKey, 253));
+  if (!RW.isValidDomain(key)) throw new Error('invalid_site');
+  return key;
+}
+
+const FIX_SIG = (kind, selector) => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < selector.length; i++) { h ^= selector.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return `fix-${kind.replace(/_/g, '-')}-${h.toString(16)}`;
+};
+
+// An edit already saved for this selector and op (switched on or off) means the question is settled.
+function alreadyDecided(siteKey, op, selector) {
+  return editsFor(siteKey).some((e) => e.ops.some((o) => o.op === op && o.selector === selector));
+}
+
+async function saveFix(tabId, rec, cand, source) {
+  const kind = RW.PAGE_FIX_KINDS[cand.kind];
+  const edit = RW.sanitizePageEdit({
+    id: RW.newPageEditId(Date.now()), label: kind.label, source, fix: cand.kind,
+    ops: [{ op: kind.op, selector: cand.selector, what: cand.text }], createdAt: Date.now()
+  });
+  if (!edit) return null;
+  await update((st) => RW.savePageEdit(st, rec.siteKey, edit), ['pageEdits'], { rules: false, quiet: true });
+  await pushEdit(rec.siteKey, edit, true);
+  rec.fixes = (rec.fixes || []).filter((f) => f.id !== cand.id);
+  saveTabsSoon();
+  return edit;
+}
+
 
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max || 200) : '');
 
@@ -491,10 +629,15 @@ const HANDLERS = {
       }
       const host = RW.hostFromUrl(topUrlOf(sender));
       const cfg = configFor(host);
+      // Saved page edits go to the top frame only, and not on a site switched off.
+      const edits = sender.frameId === 0 && cfg.tier !== 'off'
+        ? editsFor(cfg.siteKey).filter((e) => e.enabled && e.ops.length).map((e) => ({ id: e.id, ops: e.ops }))
+        : [];
       return {
         config: contentConfig(cfg, isIncognito(sender)),
         intent: RW.consentIntent(cfg),
-        hasCosmetics: RW.buildCosmeticSelectors(cfg, cfg.hostname).length > 0
+        hasCosmetics: RW.buildCosmeticSelectors(cfg, cfg.hostname).length > 0,
+        edits
       };
     }
   },
@@ -557,17 +700,17 @@ const HANDLERS = {
     fn: async (p, sender) => {
       const info = {
         cmp: RW.KNOWN_CMP_NAMES.includes(p.cmp) ? p.cmp : 'Generic',
-        method: ['api', 'dom', 'heuristic', 'hidden'].includes(p.method) ? p.method : 'dom',
+        method: ['api', 'dom', 'heuristic', 'hidden', 'ai'].includes(p.method) ? p.method : 'dom',
         decision: ['reject', 'accept', 'custom'].includes(p.decision) ? p.decision : 'reject',
         at: Date.now()
       };
       const tabId = sender.tab.id;
-      const rec = tabs.get(tabId);
+      const rec = recordForSender(sender);
       if (rec && rec.popup) return { counted: false };
       if (rec) rec.popup = info;
       state.stats.totalPopupsHandled++;
       markDirty('stats');
-      saveTabsSoon();
+      await saveTabsNow(); // once per page, and worth keeping if the worker stops next
       if (sender.frameId !== 0) {
         const cfg = configFor(RW.hostFromUrl(topUrlOf(sender)));
         chrome.tabs.sendMessage(tabId, {
@@ -653,7 +796,7 @@ const HANDLERS = {
     from: [FROM_CONTENT],
     fn: async (p, sender) => {
       if (sender.frameId !== 0) throw new Error('top_frame_only');
-      const rec = tabs.get(sender.tab.id);
+      const rec = recordForSender(sender);
       if (!rec) return {};
       const id = /^a[0-9a-z]{4,12}$/.test(p.id) ? p.id : null;
       const signature = /^[a-z0-9:|._-]{1,120}$/.test(p.signature) ? p.signature : null;
@@ -671,6 +814,103 @@ const HANDLERS = {
     }
   },
 
+  [A.AI_EVALUATE_CONSENT]: {
+    from: [FROM_CONTENT],
+    fn: async (p, sender) => {
+      const leave = (reason, epoch, source) => ({ outcome: 'leave_unchanged', source: source || 'rule', reason, epoch });
+      if (sender.frameId !== 0) return leave('subframe');
+      const sig = RW.sanitizeConsentSignals(p.signals);
+      if (!sig) return leave('no_candidates');
+      const host = RW.hostFromUrl(topUrlOf(sender));
+      const cfg = configFor(host);
+      const epoch = RW.settingsEpoch(cfg);
+      if (!RW.runtimeCapabilities(cfg, { incognito: isIncognito(sender) }).consentAi) return leave('not_enabled', epoch);
+      if (RW.isAiUndone(state, cfg.siteKey, CONSENT_FAILED)) return leave('failed_before', epoch);
+      const key = RW.consentDecisionKey(sig);
+      const remembered = RW.recallAiEntry(state, cfg.siteKey, key, epoch);
+      if (remembered) {
+        const b = remembered.action === 'refuse_non_essential' && sig.buttons.find((x) => x.label === remembered.label);
+        return b ? { outcome: 'refuse_non_essential', candidate: b.id, label: b.label, source: 'memory', epoch } : leave('remembered', epoch, 'memory');
+      }
+      const tab = await chrome.tabs.get(sender.tab.id).catch(() => null);
+      if (!tab || !tab.active) return leave('background_tab', epoch);
+      const lb = consentBrokerFor(sig.lang);
+      if (!lb) return leave('language_unsupported', epoch);
+      // Asked with this language as an expected input, so an unsupported language is left alone.
+      const avail = await lb.availability();
+      if (avail !== 'available') return leave(sig.lang === 'en' ? `model_${avail}` : 'language_unsupported', epoch, 'model_unavailable');
+
+      const ctrl = trackAiJob(sender.tab.id);
+      let res;
+      try {
+        res = await lb.prompt({
+          key: `${sender.tab.id}|${sender.documentId || ''}|${key}`,
+          prompt: RW.buildConsentPrompt(sig, RW.consentIntent(cfg)),
+          schema: RW.consentSchema(sig.buttons.map((b) => b.id)),
+          signal: ctrl.signal
+        });
+      } finally {
+        untrackAiJob(sender.tab.id, ctrl);
+      }
+      if (!res.ok) return leave(res.reason, epoch, 'model_unavailable');
+      const decision = RW.parseConsentDecision(res.text, sig.buttons.map((b) => b.id));
+      if (!decision) { lb.stats.invalid++; return leave('invalid_output', epoch); }
+      if (RW.settingsEpoch(configFor(host)) !== epoch) return leave('settings_changed', epoch);
+      if (decision.action !== 'refuse_non_essential') {
+        await update((st) => RW.rememberAiDecision(st, cfg.siteKey, key, 'leave_unchanged', epoch, Date.now()), ['aiMemory'], { rules: false, quiet: true });
+        return leave('model_left_it', epoch, 'model');
+      }
+      const b = sig.buttons.find((x) => x.id === decision.candidate);
+      return { outcome: 'refuse_non_essential', candidate: b.id, label: b.label, source: 'model', epoch };
+    }
+  },
+
+  // Sent just before the click. The site counts as failed until the page reports a verified result,
+  // so a click that navigates away (and takes the page's script with it) is never retried.
+  [A.AI_CONSENT_ATTEMPT]: {
+    from: [FROM_CONTENT],
+    fn: async (p, sender) => {
+      if (sender.frameId !== 0) throw new Error('top_frame_only');
+      const cfg = configFor(RW.hostFromUrl(topUrlOf(sender)));
+      if (!RW.isValidDomain(cfg.siteKey)) throw new Error('unsupported_site');
+      if (!RW.runtimeCapabilities(cfg, { incognito: isIncognito(sender) }).consentAi) throw new Error('not_enabled');
+      await update((st) => RW.markAiUndone(st, cfg.siteKey, CONSENT_FAILED, Date.now()), ['aiMemory'], { rules: false, quiet: true });
+      consentStats.attempts++;
+      return {};
+    }
+  },
+
+  [A.AI_CONSENT_RESULT]: {
+    from: [FROM_CONTENT],
+    fn: async (p, sender) => {
+      if (sender.frameId !== 0) throw new Error('top_frame_only');
+      const cfg = configFor(RW.hostFromUrl(topUrlOf(sender)));
+      if (!RW.isValidDomain(cfg.siteKey)) throw new Error('unsupported_site');
+      const sig = RW.sanitizeConsentSignals({ signature: p.signature, lang: 'en', buttons: [{ id: 'b1', label: p.label }] });
+      const id = /^a[0-9a-z]{4,12}$/.test(p.id) ? p.id : null;
+      if (!sig || !id) throw new Error('invalid_result');
+      const key = RW.consentDecisionKey(sig);
+      const label = sig.buttons[0].label;
+      const now = Date.now();
+      if (p.verified !== true) {
+        consentStats.failed++;
+        await update((st) => RW.forgetAiDecision(st, cfg.siteKey, key, now), ['aiMemory'], { rules: false, quiet: true });
+        return {};
+      }
+      consentStats.verified++;
+      const epoch = RW.settingsEpoch(cfg);
+      await update((st) => RW.rememberAiDecision(RW.clearAiUndone(st, cfg.siteKey, CONSENT_FAILED, now), cfg.siteKey, key, 'refuse_non_essential', epoch, now, label),
+        ['aiMemory'], { rules: false, quiet: true });
+      const rec = recordForSender(sender);
+      if (rec) {
+        rec.adjustments = (rec.adjustments || []).filter((a) => a.id !== id).slice(-9);
+        rec.adjustments.push({ id, signature: sig.signature, kind: RW.AI_CONSENT_KIND, label, source: p.source === 'memory' ? 'memory' : 'model', at: now });
+        saveTabsSoon();
+      }
+      return {};
+    }
+  },
+
   [A.AI_UNDO_ADJUSTMENT]: {
     from: [FROM_PAGE],
     fn: async (p) => {
@@ -678,6 +918,7 @@ const HANDLERS = {
       const rec = tabs.get(tabId);
       const adj = rec && (rec.adjustments || []).find((a) => a.id === p.id);
       if (!adj) throw new Error('not_found');
+      if (adj.kind === RW.AI_CONSENT_KIND) throw new Error('cannot_undo_click');
       await chrome.tabs.sendMessage(tabId, { action: A.AI_REVERT, payload: { id: adj.id } }, { frameId: 0 }).catch(noop);
       rec.adjustments = rec.adjustments.filter((a) => a.id !== adj.id);
       saveTabsSoon();
@@ -695,10 +936,19 @@ const HANDLERS = {
       const tabId = Number(p.tabId);
       const rec = tabs.get(tabId);
       if (!rec || !rec.siteKey) throw new Error('not_found');
+      // Cookie banner answers cannot be unclicked: stop doing it here, and the popup explains how to
+      // change the answer with the site's own cookie settings.
+      if (p.kind === RW.AI_CONSENT_KIND) {
+        rec.adjustments = (rec.adjustments || []).filter((a) => a.kind !== RW.AI_CONSENT_KIND);
+        saveTabsSoon();
+        await update((st) => RW.setSiteCookieBannerAi(st, rec.siteKey, 'off', Date.now()), ['siteProfiles'], { rules: false });
+        return {};
+      }
       for (const adj of rec.adjustments || []) {
+        if (adj.kind === RW.AI_CONSENT_KIND) continue;
         await chrome.tabs.sendMessage(tabId, { action: A.AI_REVERT, payload: { id: adj.id } }, { frameId: 0 }).catch(noop);
       }
-      rec.adjustments = [];
+      rec.adjustments = (rec.adjustments || []).filter((a) => a.kind === RW.AI_CONSENT_KIND);
       saveTabsSoon();
       await update((st) => RW.setSiteNewsletter(st, rec.siteKey, 'keep', Date.now()), ['siteProfiles'], { rules: false });
       return {};
@@ -712,6 +962,7 @@ const HANDLERS = {
       preference: !!state.aiSettings.autoOptimise,
       operatingMode: state.operatingMode,
       stats: Object.assign({}, broker.stats),
+      consent: Object.assign({ languages: [...consentBrokers.keys()] }, consentStats),
       hasSession: broker.hasSession,
       pending: broker.pending
     })
@@ -753,11 +1004,176 @@ const HANDLERS = {
     }
   },
 
-  [A.RESTORE_SITE_PROFILE]: {
+
+  [A.APPLY_PAGE_EDITS]: {
+    from: [FROM_CONTENT],
+    fn: async (p, sender) => {
+      if (sender.frameId !== 0) return { applied: 0 };
+      const rec = recordForSender(sender);
+      const siteKey = RW.siteKeyForUrl(topUrlOf(sender));
+      const ids = Array.isArray(p.ids) ? p.ids.filter((x) => typeof x === 'string').slice(0, RW.PAGE_EDITS_MAX_PER_SITE) : [];
+      const list = editsFor(siteKey).filter((e) => e.enabled && ids.includes(e.id));
+      for (const e of list) await setEditCss(sender.tab.id, e, p.remove !== true);
+      // Edits the page check refused are listed in the popup with the reason.
+      if (rec && p.remove === true) {
+        const reasons = Array.isArray(p.reasons) ? p.reasons : [];
+        rec.editSkipped = list.map((e, i) => ({ id: e.id, reason: str(reasons[ids.indexOf(e.id)] || reasons[i], 80) })).slice(0, 10);
+        saveTabsSoon();
+      }
+      return { applied: list.length };
+    }
+  },
+
+  [A.PAGE_FIX_CANDIDATES]: {
+    from: [FROM_CONTENT],
+    fn: async (p, sender) => {
+      if (sender.frameId !== 0) return { applied: 0 };
+      const rec = recordForSender(sender);
+      if (!rec || !rec.siteKey) return { applied: 0 };
+      const cfg = configFor(RW.hostFromUrl(topUrlOf(sender)));
+      const caps = RW.runtimeCapabilities(cfg, { incognito: isIncognito(sender) });
+      if (caps.pageFixes === 'off') return { applied: 0 };
+      const now = Date.now();
+      const cands = [];
+      for (const raw of (Array.isArray(p.candidates) ? p.candidates : []).slice(0, 6)) {
+        if (!raw || !Object.prototype.hasOwnProperty.call(RW.PAGE_FIX_KINDS, raw.kind)) continue;
+        const kind = RW.PAGE_FIX_KINDS[raw.kind];
+        const op = RW.sanitizePageEditOp({ op: kind.op, selector: raw.selector === 'page' ? 'page' : raw.selector });
+        if (!op || !RW.pageFixAllowed(raw.kind, raw.text)) continue;
+        if (alreadyDecided(rec.siteKey, op.op, op.selector)) continue;
+        const sig = FIX_SIG(raw.kind, op.selector);
+        if (RW.isAiUndone(state, rec.siteKey, sig, now)) continue; // you dismissed or undid this one
+        rec.fixSeq = ((rec.fixSeq || 0) % 999) + 1;
+        cands.push({ id: `f${rec.fixSeq}`, sig, kind: raw.kind, selector: op.selector, text: RW.cleanPageText(raw.text, 60),
+          area: Math.max(0, Math.min(100, Math.round(Number(raw.area) || 0))), position: RW.cleanPageText(raw.position, 20) });
+      }
+      if (!cands.length) return { applied: 0 };
+      const applied = [];
+      let suggest = cands;
+      if (caps.pageFixes === 'auto') {
+        const sure = cands.filter((c) => RW.PAGE_FIX_KINDS[c.kind].sure);
+        let unsure = cands.filter((c) => !RW.PAGE_FIX_KINDS[c.kind].sure);
+        let yes = [];
+        if (unsure.length && caps.pageFixAi) {
+          const ids = unsure.map((c) => c.id);
+          const res = await fixBrokerFor().prompt({ key: `fix:${sender.tab.id}:${ids.join(',')}:${rec.siteKey}`, prompt: RW.pageFixPrompt(unsure), schema: RW.pageFixSchema(ids) });
+          const verdict = res.ok ? RW.parsePageFixDecisions(res.text, ids) : null;
+          if (verdict) {
+            yes = unsure.filter((c) => verdict[c.id] === 'apply');
+            unsure = unsure.filter((c) => verdict[c.id] !== 'apply');
+          }
+        }
+        for (const c of sure.concat(yes)) {
+          const e = await saveFix(sender.tab.id, rec, c, 'automatic');
+          if (e) applied.push(e.id);
+        }
+        suggest = unsure;
+      }
+      rec.fixes = (rec.fixes || []).filter((f) => !suggest.some((c) => c.selector === f.selector && c.kind === f.kind)).concat(suggest).slice(-5);
+      saveTabsSoon();
+      return { applied: applied.length, suggested: suggest.length };
+    }
+  },
+
+  [A.APPLY_PAGE_FIX]: {
     from: [FROM_PAGE],
     fn: async (p) => {
-      const profile = p.profile && typeof p.profile === 'object' ? p.profile : null;
-      await update((st) => RW.restoreSiteProfile(st, str(p.siteKey, 253), profile, Date.now()), ['siteProfiles']);
+      const tabId = Number(p.tabId);
+      const rec = tabs.get(tabId);
+      const cand = rec && (rec.fixes || []).find((f) => f.id === p.id);
+      if (!cand) throw new Error('not_found');
+      const edit = await saveFix(tabId, rec, cand, 'suggested');
+      if (!edit) throw new Error('invalid_edit');
+      announceSettingsChange();
+      return { id: edit.id };
+    }
+  },
+
+  [A.DISMISS_PAGE_FIX]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      const tabId = Number(p.tabId);
+      const rec = tabs.get(tabId);
+      const cand = rec && (rec.fixes || []).find((f) => f.id === p.id);
+      if (!cand) throw new Error('not_found');
+      rec.fixes = rec.fixes.filter((f) => f !== cand);
+      saveTabsSoon();
+      await update((st) => RW.markAiUndone(st, rec.siteKey, cand.sig, Date.now()), ['aiMemory'], { rules: false, quiet: true });
+      return {};
+    }
+  },
+
+  [A.SAVE_PAGE_EDIT]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      const siteKey = siteKeyOf(p);
+      const settings = Array.isArray(p.settings) ? p.settings.slice(0, 6) : [];
+      const draft = {
+        id: RW.newPageEditId(Date.now()), label: p.label, request: p.request, source: 'described',
+        ops: Array.isArray(p.ops) ? p.ops : [], settings: withPrev(state, siteKey, settings), createdAt: Date.now()
+      };
+      const edit = RW.sanitizePageEdit(draft);
+      if (!edit) throw new Error('invalid_edit');
+      const rulesChange = edit.settings.length > 0;
+      await update((st) => applySettingChanges(RW.savePageEdit(st, siteKey, edit), siteKey, edit.settings),
+        rulesChange ? ['pageEdits', 'siteProfiles'] : ['pageEdits'], { rules: rulesChange });
+      await pushEdit(siteKey, edit, true);
+      return { edit };
+    }
+  },
+
+  [A.SET_PAGE_EDIT]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      const siteKey = siteKeyOf(p);
+      const edit = editsFor(siteKey).find((e) => e.id === p.id);
+      if (!edit) throw new Error('not_found');
+      const on = p.enabled === true;
+      if (edit.enabled === on) return {};
+      const rulesChange = edit.settings.length > 0;
+      await update((st) => {
+        const next = RW.setPageEditEnabled(st, siteKey, edit.id, on);
+        return on ? applySettingChanges(next, siteKey, edit.settings) : revertSettingChanges(next, siteKey, edit.settings);
+      }, rulesChange ? ['pageEdits', 'siteProfiles'] : ['pageEdits'], { rules: rulesChange });
+      await pushEdit(siteKey, edit, on);
+      // Undoing an automatic or suggested fix also means "do not suggest it again here".
+      if (!on && edit.fix) {
+        for (const o of edit.ops) {
+          await update((st) => RW.markAiUndone(st, siteKey, FIX_SIG(edit.fix, o.selector), Date.now()), ['aiMemory'], { rules: false, quiet: true });
+        }
+      }
+      return {};
+    }
+  },
+
+  [A.DELETE_PAGE_EDIT]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      const siteKey = siteKeyOf(p);
+      const edit = editsFor(siteKey).find((e) => e.id === p.id);
+      if (!edit) return {};
+      const rulesChange = edit.enabled && edit.settings.length > 0;
+      await update((st) => {
+        const next = edit.enabled ? revertSettingChanges(st, siteKey, edit.settings) : st;
+        return RW.deletePageEdit(next, siteKey, edit.id);
+      }, rulesChange ? ['pageEdits', 'siteProfiles'] : ['pageEdits'], { rules: rulesChange });
+      if (edit.enabled) await pushEdit(siteKey, edit, false);
+      return {};
+    }
+  },
+
+  [A.SET_AI_PAGE_SETTINGS]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      await update((st) => RW.setAiPageSettings(st, { pageEdits: p.pageEdits, pageFixes: p.pageFixes }), ['aiSettings'], { rules: false });
+      return {};
+    }
+  },
+
+  [A.SET_SITE_PAGE_FIXES]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      await update((st) => RW.setSitePageFixes(st, siteKeyOf(p), p.value, Date.now()), ['siteProfiles'], { rules: false });
       return {};
     }
   },
@@ -806,7 +1222,11 @@ const HANDLERS = {
         operatingMode: state.operatingMode,
         capabilities: RW.runtimeCapabilities(cfg, { incognito: !!tab.incognito }),
         incognito: !!tab.incognito,
-        adjustments: rec ? (rec.adjustments || []).map((a) => ({ id: a.id, kind: a.kind, source: a.source, at: a.at })) : []
+        adjustments: rec ? (rec.adjustments || []).map((a) => ({ id: a.id, kind: a.kind, source: a.source, at: a.at, label: a.label || '' })) : [],
+        pageEdits: editsFor(cfg.siteKey),
+        pageFixes: rec ? (rec.fixes || []).map((x) => ({ id: x.id, kind: x.kind, text: x.text })) : [],
+        editSkipped: rec ? rec.editSkipped || [] : [],
+        aiSettings: RW.sanitizeAiSettings(state.aiSettings)
       };
     }
   },
@@ -977,7 +1397,8 @@ const HANDLERS = {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const kind = senderKind(sender);
-  const handler = msg && typeof msg.action === 'string' ? HANDLERS[msg.action] : null;
+  // Own keys only, so "toString" or "__proto__" are unknown actions, not inherited functions.
+  const handler = msg && typeof msg.action === 'string' && Object.prototype.hasOwnProperty.call(HANDLERS, msg.action) ? HANDLERS[msg.action] : null;
   if (!kind || !handler) {
     sendResponse({ ok: false, error: kind ? 'unknown_action' : 'forbidden' });
     return false;

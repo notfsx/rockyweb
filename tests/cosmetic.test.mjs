@@ -48,4 +48,10 @@ test('consent rules are well-formed', () => {
   const reject = (t) => RW.CONSENT_REJECT_PATTERNS.some((re) => re.test(t));
   for (const t of ['reject all', 'decline', 'only necessary cookies', 'alle ablehnen', 'tout refuser', 'rechazar todo', 'continue without accepting', 'nur notwendige cookies']) assert.ok(reject(t), t);
   for (const t of ['accept all', 'settings', 'reject all ads forever please', 'subscribe']) assert.ok(!reject(t), t);
+  // Seen on real sites (NHS, Ryanair) in the 2026-11-15 corpus run.
+  for (const t of ['reject analytics cookies', 'no, thanks', 'no thanks', 'decline marketing cookies', "no, i don't agree"]) assert.ok(reject(t), t);
+  for (const t of ['no thanks, i will subscribe', 'reject and subscribe', 'accept analytics cookies', 'no']) assert.ok(!reject(t), t);
+  const accept = (t) => RW.CONSENT_ACCEPT_PATTERNS.some((re) => re.test(t));
+  for (const t of ['yes, i agree', 'i agree', 'accept all']) assert.ok(accept(t), t);
+  for (const t of ['no, thanks', 'reject analytics cookies']) assert.ok(!accept(t) && reject(t), t);
 });

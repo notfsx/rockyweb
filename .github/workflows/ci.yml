@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Static checks and unit tests
+        run: npm run check
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser suites (model double, no real AI)
+        run: xvfb-run -a npm run test:e2e
+      - name: Upgrade from 1.0.0
+        run: xvfb-run -a npm run test:upgrade
+      - name: Accessibility
+        run: xvfb-run -a npm run test:a11y
+      - name: Package
+        run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rockyweb-zip
+          path: dist/*.zip
+          if-no-files-found: error

@@ -207,15 +207,15 @@ test('new installs are silent; a saved notification preference is kept', () => {
   assert.equal(v1.globalCustomConfig.showToastBadge, true);
   assert.equal(v1.siteProfiles['a.com'].tier, 'strict');
   assert.equal(v1.operatingMode, 'full');
-  assert.deepEqual(v1.aiSettings, { autoOptimise: false });
+  assert.deepEqual(v1.aiSettings, { autoOptimise: false, pageEdits: true, pageFixes: 'suggest' });
 });
 
 test('runtimeCapabilities: one precedence for Light, AI, Incognito and explicit choices', () => {
   let s = RW.setAiAutoOptimise(RW.createDefaultState(), true);
   const caps = (st, host, ctx) => RW.runtimeCapabilities(RW.getEffectiveConfig(st, host), ctx);
-  assert.deepEqual(caps(s, 'a.com'), { consent: 'full', learning: true, headerObservation: true, newsletter: 'ai', ai: true, aiPausedReason: null });
+  assert.deepEqual(caps(s, 'a.com'), { consent: 'full', learning: true, headerObservation: true, newsletter: 'ai', ai: true, consentAi: true, aiPausedReason: null, pageFixes: 'suggest', pageFixAi: false });
   const light = RW.setOperatingMode(s, 'light');
-  assert.deepEqual(caps(light, 'a.com'), { consent: 'bounded', learning: false, headerObservation: false, newsletter: 'off', ai: false, aiPausedReason: 'light' });
+  assert.deepEqual(caps(light, 'a.com'), { consent: 'bounded', learning: false, headerObservation: false, newsletter: 'off', ai: false, consentAi: false, aiPausedReason: 'light', pageFixes: 'off', pageFixAi: false });
   assert.equal(caps(s, 'a.com', { incognito: true }).ai, false);
   assert.equal(caps(s, 'a.com', { incognito: true }).learning, false);
   assert.equal(caps(s, 'a.com', { incognito: true }).aiPausedReason, 'incognito');
@@ -229,6 +229,39 @@ test('runtimeCapabilities: one precedence for Light, AI, Incognito and explicit 
   assert.equal(caps(RW.setSiteTier(s, 'a.com', 'off', 1), 'a.com').consent, 'off');
   assert.equal(caps(RW.setSiteCustomOption(s, 'a.com', 'cosmeticFiltering', false, 1), 'a.com').ai, false);
   assert.equal(caps(RW.createDefaultState(), 'a.com').ai, false); // AI is off by default
+});
+
+test('runtimeCapabilities: AI for unknown cookie banners is gated by mode, privacy, intent and site choice', () => {
+  const on = RW.setAiAutoOptimise(RW.createDefaultState(), true);
+  const caps = (st, ctx) => RW.runtimeCapabilities(RW.getEffectiveConfig(st, 'a.com'), ctx).consentAi;
+  assert.equal(caps(on), true);
+  assert.equal(caps(RW.createDefaultState()), false, 'off unless automatic optimisation is on');
+  assert.equal(caps(RW.setOperatingMode(on, 'light')), false, 'never in Light');
+  assert.equal(caps(on, { incognito: true }), false, 'never in Incognito');
+  assert.equal(caps(RW.setSiteTier(on, 'a.com', 'off', 1)), false);
+  assert.equal(caps(RW.setSiteCustomOption(on, 'a.com', 'consentMode', 'off', 1)), false);
+  // Nothing to refuse when every category is allowed.
+  const all = RW.setGlobalCustomOption(on, 'consentCategories', { necessary: true, functional: true, analytics: true, marketing: true });
+  assert.equal(caps(all), false);
+  // "Don't do this on this site" is an explicit choice and survives everything else.
+  const no = RW.setSiteCookieBannerAi(on, 'a.com', 'off', 1);
+  assert.equal(caps(no), false);
+  assert.equal(RW.getEffectiveConfig(no, 'b.com').cookieBannerAi, 'auto');
+  assert.notEqual(RW.settingsEpoch(RW.getEffectiveConfig(no, 'a.com')), RW.settingsEpoch(RW.getEffectiveConfig(on, 'a.com')));
+  assert.throws(() => RW.setSiteCookieBannerAi(on, 'a.com', 'sometimes', 1), /invalid_value/);
+  // The code switch wins over every setting.
+  RW.AI_CONSENT_ENABLED = false;
+  try { assert.equal(caps(on), false); } finally { RW.AI_CONSENT_ENABLED = true; }
+});
+
+test('AI memory keeps a verified cookie banner answer with its label, and drops malformed ones', () => {
+  let s = RW.rememberAiDecision(RW.createDefaultState(), 'a.com', 'consent|k:1234abcd|n:2', 'refuse_non_essential', 'e1', 1000, 'Only the necessary ones');
+  assert.deepEqual(RW.recallAiEntry(s, 'a.com', 'consent|k:1234abcd|n:2', 'e1', 2000), { action: 'refuse_non_essential', at: 1000, epoch: 'e1', label: 'Only the necessary ones' });
+  assert.equal(RW.recallAiEntry(s, 'a.com', 'consent|k:1234abcd|n:2', 'e2', 2000), null, 'settings changed');
+  const bad = RW.normalizeState({ aiMemory: { decisions: { 'a.com': { 'consent|k:1|n:1': { action: 'refuse_non_essential', at: Date.now(), epoch: 'e1' } } } } });
+  assert.deepEqual(bad.aiMemory.decisions, {}, 'no label, no memory');
+  s = RW.forgetAiDecision(s, 'a.com', 'consent|k:1234abcd|n:2', 2000);
+  assert.equal(RW.recallAiEntry(s, 'a.com', 'consent|k:1234abcd|n:2', 'e1', 2000), null);
 });
 
 test('Light is separate from site policies and switching back restores everything', () => {

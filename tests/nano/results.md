@@ -1,5 +1,7 @@
 # Real Gemini Nano: results from 2026-11-15
 
+Updated 2026-11-19 with the third round (wider describe set, a 200-navigation soak and the real-website corpus).
+
 Machine: Windows 11 Pro (build 26300), Google Chrome 157.0.8103.51, AMD Ryzen 9 5900HS (8 cores), 47 GB RAM, NVIDIA GeForce RTX 3080 Laptop GPU (8 GB). `chrome://on-device-internals` reports device performance class "Very High" and the GPU model component ready. Chrome downloaded the model in 185 s into a separate test profile. No model double was used for anything on this page.
 
 **Measured** means read from the browser or the operating system during these runs. **Estimated** is marked as such.
@@ -130,6 +132,68 @@ Run from the popup on a warm model, on a site in balanced mode. Each answer is a
 
 Score: **11 of 11** in the final run (2.1 to 4.6 s each). Nano's answers vary between runs: the run before the last three rules scored 9 of 11. There, "show ads here … but keep rejecting cookie banners" came back as site off plus cookie popups "reject all", and "make this site strict" came with four redundant switches. The current rules would have turned those into an empty preview with an explanation and a clean "strict" respectively, so about 10 of 11 for that run (estimated by applying the rules to its recorded answers). Confirmation and undo are unchanged, and the popup still gives up after 30 s on a cold model.
 
+### Wider set, third round (20 requests, 2026-11-15)
+
+Nine new phrasings were added, written to catch the model out (double negatives, "apart from", British and American wording). Measured after a 379 s cold start; 2.1 to 3.6 s per request.
+
+Score: **16 of 20** (the "evil.example" request is a safety case and not scored; it stayed contained). The misses:
+
+| Request | Preview | Why it counts as a miss |
+|---|---|---|
+| show ads here, I want to support this site, but keep rejecting cookie banners | mode: balanced to consent only | arguably right (consent only shows ads and still answers banners), but it also stops tracker blocking, which was not asked |
+| make this site strict | cookie popups to reject all, plus annoyances on | close to strict, but not the "strict" mode itself |
+| stop cleaning links but not hiding ads | no change | missed a clear request |
+| show adverts here but keep the ad blocking on | no change | contradictory request; no change is safe, but a note would be kinder |
+
+None of the misses widened protection loss beyond the request, and each is a preview the user must confirm.
+
+## Soak against real Nano (`tests/nano/soak.mjs`, measured 2026-11-15)
+
+200 navigations in one official Chrome 157 session after a 591 s warm-up, cycling five page kinds (article with overlay, known consent platform, unknown banner, login page with a form, plain page), 40 of each.
+
+| Measure | Result |
+|---|---|
+| Right answer per kind | article 40/40, known platform 40/40, unknown banner 40/40, login form left 40/40 |
+| Accept clicks / navigations caused | 0 / 0 |
+| From navigation to settled (median / p95) | 3424 ms / 4708 ms |
+| Model prompts / failures / timeouts | 40 / 0 / 0, one session for the whole run |
+| Cookie banner answers verified | 40 of 40 |
+| Extension memory (private bytes) | 32 MB at the start, 49 MB after 200 navigations, flat over the last 100 |
+| Chrome's model process | 4996 MB, then 5146 MB, flat |
+| `chrome.storage.local` / `.session` | 513 to 12285 bytes / 0 to 640 bytes |
+| Worker records left | 1 tab record, 1 consent broker |
+
+## Real websites with real Nano (AI off against AI on, `npm run test:sites`)
+
+The 46-site corpus was run twice in official Chrome with the model warm, once with automatic optimisation off and once on. 38 of 46 sites gave identical results. The 8 differences were traced to consent kept in partitioned third-party storage between the two runs (the harness clears first-party storage only), not to the AI. The banner AI made **0 attempts** on real sites: every banner it could have seen was answered by the platform API or the wording rules first, or was not a consent banner (pay or consent walls, notices). Accept clicks: 0 in both. Details: [tests/sites/results.md](../sites/results.md).
+
+## Cookie banners no rule recognises (real Nano, `tests/nano/consent-fixtures.mjs`)
+
+Each fixture is a cookie banner with an accept button and one other button, served locally. Every click is recorded by kind. "Model" means the model was asked; buttons that accept, open settings, save, pay, sign in or postpone never reach it.
+
+**First run** (filter and prompt as first written): recall 10 of 10 refusals (English, German, French, Spanish), zero accept clicks, zero navigations, median 1.7 s per model call after a 456 s cold start. But with a single button on offer, Nano called "Remind me later" and "Tell me more" refusals with high confidence, and they were clicked (neither accepts). Precision 10 of 12.
+
+Fixes: postponing, information, help and language wording (14 languages) is now removed before the model, and the prompt says a button counts only if its own label refuses.
+
+**Second run** (2026-11-15, after a 385 s cold start):
+
+| Case | Offered to the model | Model answer | Result |
+|---|---|---|---|
+| Continue without agreeing to cookies | that label | refuse, high | clicked, right |
+| Only the necessary ones / Just the essentials, please / I prefer not to | that label | refuse, high | clicked, right |
+| Weiter ohne Einwilligung / Continuer sans accepter les cookies / Continuar sin aceptar | that label | refuse, high | clicked, right |
+| Use necessary cookies only, No thanks, injected heading with "No thanks" | not asked (the wording rules answer these now) | | clicked by rule, right |
+| Remind me later, Tell me more, Show me the vendors | not asked (filtered) | | left, right |
+| I am not decided yet | that label | refuse, **low** | left (low confidence), right |
+| Go back | that label | leave, low | left, right |
+| English (UK) | "English UK" | refuse, high | not clicked: the label the model returned did not match the button on the page, so the recheck stopped it |
+| Skip for now | that label | refuse, high | **clicked, wrong** (not an accept) |
+| Manage plus Save, a fake "No thanks" that is really accept, a banner you opened | not asked | | left, right (the existing settings rule pressed "Manage" twice, as before) |
+
+Recall 10 of 10, precision 10 of 11, zero accept clicks, zero navigations. Model calls took 1.3 to 2.9 s. "Skip" and "not now" were added to the filter after this run.
+
+What this shows: on its own, Nano leans towards "refuse" when one button is on offer, even for buttons that do not refuse. The guarantee that it can never accept comes from the filter and the recheck, not from the model. The model's job is to recognise refusals the wording rules miss, which it did every time.
+
 ## Incognito (measured, real private window)
 
 Rockyweb was allowed in Incognito through `chrome://extensions` (developer mode on, as for any unpacked install), and a real private window was opened with `chrome.windows.create({ incognito: true })`. Five pages were loaded in it: an article with a newsletter overlay and four sites carrying the same cookie-setting third-party pixel. The same was then done in a normal window as a control. Run on a fresh profile without the model, so model requests are counted where the content script asks, before any availability check.
@@ -146,11 +210,11 @@ The private tab exists only in the worker's memory while it is open, marked `inc
 
 ## What used the model double instead
 
-The 27 automatic optimisation, Light and consent browser checks (`tests/e2e/run-ai-e2e.mjs`), the settings page's download and availability states, and `npm run perf`. The 20 core browser checks (`tests/e2e/run-e2e.mjs`) ran in Chromium 159, where `LanguageModel` reports `unavailable`, so they show everything else works with no model at all. In that same browser the AI toggle and "describe a change" were greyed out with "On-device AI is unavailable in this browser or on this device."
+The 41 automatic optimisation, Light and consent browser checks (`tests/e2e/run-ai-e2e.mjs`), the settings page's download and availability states, and `npm run perf`. The 28 core browser checks (`tests/e2e/run-e2e.mjs`) ran in Chromium 159, where `LanguageModel` reports `unavailable`, so they show everything else works with no model at all. In that same browser the AI toggle and "describe a change" were greyed out with "On-device AI is unavailable in this browser or on this device."
 
 ## Remaining limitations
 
 - Real Nano was tested on one machine. The cold start in particular will differ on other hardware.
 - The first inference after each browser start took 4 to 11 minutes on this laptop, so for those first minutes overlays are left alone.
-- "Describe a change" was scored on 11 requests in one site state. Nano's raw answers vary between runs; the fixed rules catch the mistakes seen so far, and the preview and undo remain the safeguard.
+- "Describe a change" was scored on 11, then 20 requests in one site state (16 of 20 in the wider set). Nano's raw answers vary between runs; the fixed rules catch the mistakes seen so far, and the preview and undo remain the safeguard.
 - The paired fixtures were last run against real Nano before this round's scheduling and backoff changes; the decision rules they test did not change.

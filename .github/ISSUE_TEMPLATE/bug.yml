@@ -1,0 +1,21 @@
+name: Bug or idea
+description: Something in Rockyweb itself, or a suggestion.
+body:
+  - type: markdown
+    attributes:
+      value: For security problems, please use the Security tab and "Report a vulnerability" instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, or what you would like
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to see it
+  - type: input
+    id: versions
+    attributes:
+      label: Rockyweb and Chrome versions
+      placeholder: Rockyweb 1.1.0, Chrome 157

@@ -121,8 +121,9 @@ test('checkPlan: "but keep" never turns the whole site off, and the tracker swit
 test('checkPlan: what the request keeps is never changed', () => {
   const plan = { changes: [{ op: 'site_mode', value: 'off' }, { op: 'setting', key: 'consentMode', value: 'strict_reject' }], unsupported: [] };
   const r = RW.checkPlan(plan, 'show ads here, I want to support this site, but keep rejecting cookie banners');
-  assert.deepEqual(r.changes, []);
-  assert.match(r.unsupported.join(' '), /changing cookie popups, which you asked to keep/);
+  // Off would stop cookie popups too, so it narrows to consent only; the cookie switch stays as it is.
+  assert.deepEqual(r.changes, [{ op: 'site_mode', value: 'consent_only' }]);
+  assert.match(r.unsupported.join(' '), /consent only is the closest mode/);
   const ads = { changes: [{ op: 'setting', key: 'cosmeticFiltering', value: false }], unsupported: [] };
   assert.deepEqual(RW.checkPlan(ads, 'stop hiding the ad boxes but keep blocking ad networks').changes, ads.changes);
 });
@@ -138,6 +139,57 @@ test('checkPlan: switches the mode already sets, or that are already so, are dro
   assert.deepEqual(RW.checkPlan(noop, 'hide annoyances', balanced).changes, [{ op: 'setting', key: 'aggressiveFiltering', value: true }]);
   const off = { changes: [{ op: 'site_mode', value: 'off' }, { op: 'setting', key: 'trackerHeuristicMode', value: 'hard_block' }], unsupported: [] };
   assert.deepEqual(RW.checkPlan(off, 'turn Rockyweb off here', balanced).changes, [{ op: 'site_mode', value: 'off' }]);
+});
+
+test('checkPlan: keep phrases are scoped, on either side of the change (table)', () => {
+  const balanced = RW.resolveTierConfig('balanced', {}, {});
+  const S = (key, value) => ({ op: 'setting', key, value });
+  const M = (value) => ({ op: 'site_mode', value });
+  const ads = S('adBlockNetwork', false);
+  const cos = S('cosmeticFiltering', false);
+  const links = S('stripUrlParams', false);
+  // [request, model's changes, changes left after the check]
+  const table = [
+    ['keep cookie popups handled but turn off tracker blocking', [S('trackerHeuristicMode', 'off')], [S('trackerHeuristicMode', 'off')]],
+    ['turn off tracker blocking but keep cookie popups handled', [S('trackerHeuristicMode', 'off')], [S('trackerHeuristicMode', 'off')]],
+    ['keep cookie popups handled but turn off tracker blocking', [S('trackerHeuristicMode', 'off'), S('consentMode', 'off')], [S('trackerHeuristicMode', 'off')]],
+    ['I still get cookie banners, reject them all', [S('consentMode', 'strict_reject')], [S('consentMode', 'strict_reject')]],
+    ['I still see trackers, block them', [S('trackerHeuristicMode', 'hard_block')], [S('trackerHeuristicMode', 'hard_block')]],
+    ['cookie banners: still reject them, and stop hiding ads', [S('consentMode', 'strict_reject'), cos], [S('consentMode', 'strict_reject'), cos]],
+    ['I still want link cleaning, but turn off ad blocking', [ads, links], [ads]],
+    ['still keep the trackers blocked but allow ads', [ads, S('trackerHeuristicMode', 'off')], [ads]],
+    ['turn off everything except cookie popups', [M('off')], [M('consent_only')]],
+    ['switch Rockyweb off apart from the cookie banner handling', [M('off')], [M('consent_only')]],
+    ['turn it all off other than consent popups', [M('off')], [M('consent_only')]],
+    ['turn off ads but not the cookie handling', [M('off')], [M('consent_only')]],
+    ['turn everything off but keep blocking trackers', [M('off')], []],
+    ['apart from link cleaning, switch everything off', [M('off')], []],
+    ['stop hiding ads, keep everything else', [M('off')], []],
+    ['turn Rockyweb off on this site', [M('off')], [M('off')]],
+    ['switch everything off on this site', [M('off')], [M('off')]],
+    ['make this site strict', [M('strict')], [M('strict')]],
+    ['turn off ad blocking but keep blocking trackers', [ads], [ads]],
+    ['turn off ad blocking but keep blocking trackers', [M('off')], []],
+    ['stop cleaning links but not hiding ads', [links, cos], [links]],
+    ["don't turn off cookie handling, just stop blocking ads", [ads, S('consentMode', 'off')], [ads]],
+    ['don’t stop blocking trackers but switch off link cleaning', [links, S('trackerHeuristicMode', 'off')], [links]],
+    ['never turn off cookie handling here; disable link cleaning', [links], [links]],
+    ['without turning off the cookie banner answers, show adverts here', [ads, cos], [ads, cos]],
+    ['show adverts here but keep the ad blocking on', [cos, ads], [cos]],
+    ['leave the cookie pop-ups alone and turn off link tidying', [links], [links]],
+    ['leave the cookie pop-ups alone and turn off link tidying', [links, S('consentMode', 'strict_reject')], [links]],
+    ['reject all cookies and keep everything else as it is', [S('consentMode', 'strict_reject')], [S('consentMode', 'strict_reject')]],
+    ['hide annoyances, keeping the empty ad spaces visible', [S('aggressiveFiltering', true), cos], [S('aggressiveFiltering', true)]],
+    ['keep tracking protection and turn off the adblock', [ads], [ads]],
+    ['keep tracking protection and the adblock, but hide annoyances', [S('aggressiveFiltering', true), ads], [S('aggressiveFiltering', true)]]
+  ];
+  assert.ok(table.length >= 25);
+  for (const [request, changes, expected] of table) {
+    const r = RW.checkPlan({ changes, unsupported: [] }, request, balanced);
+    assert.deepEqual(r.changes, expected, request);
+    // Anything removed is explained.
+    if (r.changes.length < changes.length || JSON.stringify(r.changes) !== JSON.stringify(changes)) assert.ok(r.unsupported.length, `no note: ${request}`);
+  }
 });
 
 test('checkPlan: requests for other websites or for sending data get a plain note', () => {

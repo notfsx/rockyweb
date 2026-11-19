@@ -7,7 +7,10 @@ import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { EXT_DIR } from '../../scripts/load-shared.mjs';
+import { EXT_DIR as DEFAULT_EXT } from '../../scripts/load-shared.mjs';
+
+// ROCKYWEB_EXT runs another build (before and after comparisons); ROCKYWEB_CHROME another browser.
+const EXT_DIR = process.env.ROCKYWEB_EXT || DEFAULT_EXT;
 
 // CommonJS resolution so a globally installed Playwright (NODE_PATH) works too.
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -42,6 +45,86 @@ function route(host, url) {
   if (p === '/landing') return ['text/html', page('landing', '<h1>landing</h1>')];
   if (p === '/learn') return ['text/html', page('learn', `<img src="${at('tracker.test')}/pixel.gif" alt="">`)];
   if (p === '/tracker-script') return ['text/html', page('ts', `<script src="${at('tracker.test')}/t.js"></script>`)];
+  // Paired with real sites from the 2026-11-15 corpus run. Every click is recorded.
+  if (p === '/nhs-like') {
+    // NHS: inline banner, the real reject button has the id ...link_accept, settings is a link to another page.
+    return ['text/html', page('nhs', `<script>window.__clicks = [];</script><div id="x-cookie-banner"><div class="x-cookie-banner"><h2>Cookies on the Example website</h2>
+      <p>We use some cookies to make this website work.</p><p>Help improve online services by also accepting analytics cookies.</p>
+      <button id="x-cookie-banner__link_accept_analytics" onclick="window.__clicks.push('accept')">Accept analytics cookies</button>
+      <button id="x-cookie-banner__link_accept" onclick="window.__clicks.push('reject');document.getElementById('x-cookie-banner').hidden=true">Reject analytics cookies</button>
+      <a id="x-cookie-banner__link" href="/our-policies/choose-your-cookie-settings/" onclick="window.__clicks.push('settings-link')">Choose your cookie settings</a></div></div>
+      <main><h1>Health A to Z</h1>${'<p>Text.</p>'.repeat(60)}</main>`)];
+  }
+  if (p === '/ryanair-like') {
+    // Ryanair: a full-screen dialogue whose three buttons share a "button-settings" class.
+    const b = (ref, label, kind) => `<button class="cookie-popup-with-overlay__button-settings" data-ref="cookie.${ref}" onclick="window.__clicks.push('${kind}')${kind === 'reject' ? ";this.closest('#cookie-popup-with-overlay').remove()" : ''}">${label}</button>`;
+    return ['text/html', page('ryanair', `<script>window.__clicks = [];</script><main><h1>Flights</h1>${'<p>Text.</p>'.repeat(60)}</main>
+      <div id="cookie-popup-with-overlay" role="dialog" aria-modal="true" style="background:rgba(0,0,0,.4);position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:999999;display:flex">
+      <div style="background:#fff;margin:auto;width:740px;padding:32px"><h2>We value your privacy</h2><p>By clicking "Yes, I agree", you agree to us using cookies to personalise content and analyse our traffic.</p>
+      ${b('view-settings', 'View cookie settings', 'settings')}${b('no-thanks', 'No, thanks', 'reject')}${b('accept-all', 'Yes, I agree', 'accept')}</div></div>`)];
+  }
+  if (p === '/appconsent-like') {
+    // Le Figaro (AppConsent): the banner is drawn into an iframe with no address of its own.
+    const inner = '<body style="margin:0;font-family:sans-serif"><div style="background:#fff;margin:10% auto;width:60%;padding:20px">' +
+      '<button onclick="parent.__clicks.push(\'reject\');parent.document.getElementById(\'cmp\').remove()">Continue without accepting</button>' +
+      '<h2>Make a choice for your data</h2><p>We and our partners use cookies to store and access information on your device.</p>' +
+      '<button onclick="parent.__clicks.push(\'setup\')">SET UP</button><button onclick="parent.__clicks.push(\'accept\')">ACCEPT ALL</button></div></body>';
+    return ['text/html', page('appconsent', `<script>window.__clicks = [];</script><main><h1>Le journal</h1>${'<p>Text.</p>'.repeat(60)}</main>
+      <script>setTimeout(function () { var f = document.createElement('iframe'); f.id = 'cmp'; f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;z-index:99999';
+        document.body.appendChild(f); f.contentDocument.open(); f.contentDocument.write(${JSON.stringify(inner)}); f.contentDocument.close();
+        document.body.classList.add('appconsent_noscroll'); }, 300);</script>`)];
+  }
+  if (p === '/settings-dead-end') {
+    // Ryanair in the 2026-11-15 run: "View cookie settings" replaces the banner with a layer Rockyweb cannot
+    // finish. The way back is its close button; the refusal is on the first layer.
+    return ['text/html', page('deadend', `<script>window.__clicks = [];</script><main><h1>Flights</h1>${'<p>Text.</p>'.repeat(60)}</main>
+      <div id="first" role="dialog" aria-modal="true" style="position:fixed;inset:20% 20% auto;background:#fff;padding:20px;z-index:9">
+        <h2>We value your privacy</h2><p>We use cookies to personalise content and analyse our traffic.</p>
+        <button onclick="window.__clicks.push('settings');first.hidden=true;second.hidden=false">View cookie settings</button>
+        <button onclick="window.__clicks.push('reject');first.remove();second.remove();document.documentElement.style.overflow=''">No, thanks</button>
+        <button onclick="window.__clicks.push('accept')">Yes, I agree</button></div>
+      <div id="second" role="dialog" aria-modal="true" hidden style="position:fixed;inset:10%;background:#fff;padding:20px;z-index:10">
+        <h2>Cookie settings</h2><p>Strictly necessary cookies are always on. Read about each cookie category below.</p>
+        <button aria-label="Close" onclick="window.__clicks.push('close');second.hidden=true;first.hidden=false">×</button></div>
+      <script>document.documentElement.style.overflow='hidden';</script>`)];
+  }
+  if (p === '/fake-no-thanks') {
+    // A "No thanks" whose accessible name is accept: a trap, never pressed.
+    return ['text/html', page('fake', `<script>window.__clicks = [];</script><main><h1>News</h1></main>
+      <div class="cookie-notice" style="position:fixed;bottom:0;left:0;right:0;padding:16px;background:#222;color:#fff">We use cookies for ads and analytics.
+      <button onclick="window.__clicks.push('accept')">Agree</button><button aria-label="Accept all cookies" onclick="window.__clicks.push('accept-disguised')">No thanks</button></div>`)];
+  }
+  if (p === '/inline-banner' || p === '/inline-low') {
+    // Like GOV.UK: an ordinary block at the top of the page, not an overlay.
+    const banner = `<div class="site-cookie-banner" role="region" aria-label="Cookies on Example"><h2>Cookies on Example</h2>
+      <p>We use some essential cookies to make this service work. We would also like to use analytics cookies.</p>
+      <button onclick="window.__choice='accept'">Accept additional cookies</button>
+      <button onclick="window.__choice='reject';this.parentNode.hidden=true">Reject additional cookies</button></div>`;
+    const filler = '<p>Policy text.</p>'.repeat(120);
+    return ['text/html', page('inline', p === '/inline-banner' ? `${banner}<main><h1>Service</h1>${filler}</main>` : `<main><h1>Cookie policy</h1>${filler}${banner}</main>`)];
+  }
+  if (p === '/onetrust-groups') {
+    // Real OneTrust descriptions often say "essential" or "necessary" in non-necessary groups.
+    return ['text/html', page('otg', `<div id="onetrust-consent-sdk"><div id="onetrust-banner-sdk" style="position:fixed;bottom:0;left:0;right:0;height:120px;background:#eee">
+        We use cookies. <button id="onetrust-reject-all-handler">Reject All</button></div></div>
+      <script>
+        window.__granted = [];
+        setTimeout(function () {
+          window.OneTrust = {
+            IsAlertBoxClosed: function () { return false; },
+            RejectAll: function () { window.__ot = 'api-reject'; document.getElementById('onetrust-banner-sdk').style.display = 'none'; },
+            AllowAll: function () { window.__ot = 'api-accept'; },
+            UpdateConsent: function (kind, v) { window.__granted.push(v); },
+            GetDomainData: function () { return { Groups: [
+              { OptanonGroupId: 'C0001', GroupName: 'Strictly Necessary Cookies', GroupDescription: 'Essential for the site to work.' },
+              { OptanonGroupId: 'C0002', GroupName: 'Performance Cookies', GroupDescription: 'Count visits. Not strictly necessary.' },
+              { OptanonGroupId: 'C0003', GroupName: 'Functional Cookies', GroupDescription: 'Enhanced functionality. Without them some services may not work as necessary.' },
+              { OptanonGroupId: 'C0004', GroupName: 'Targeting Cookies', GroupDescription: 'Advertising partners. Not essential.' }
+            ] }; }
+          };
+        }, 300);
+      </script>`)];
+  }
   if (p === '/onetrust') {
     return ['text/html', `<!doctype html><html class="ot-overflow-hidden" style="overflow:hidden"><head><meta charset="utf-8"><title>ot</title></head>
       <body style="min-height:3000px">
@@ -99,6 +182,7 @@ const server = http.createServer((req, res) => {
 
 // ------------------------------------------------------------------ harness
 async function check(name, fn) {
+  if (process.env.E2E_ONLY && !name.includes(process.env.E2E_ONLY)) return; // run a subset while debugging
   try {
     await fn();
     results.push([true, name]);
@@ -131,12 +215,14 @@ const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rockyweb-e2e-'));
 
 const context = await chromium.launchPersistentContext(userDataDir, {
   headless: true,
-  channel: 'chromium', // full Chromium (new headless), the headless shell cannot load extensions
+  // Full Chromium (new headless); the headless shell cannot load extensions.
+  ...(process.env.ROCKYWEB_CHROME ? { executablePath: process.env.ROCKYWEB_CHROME, headless: false, ignoreDefaultArgs: ['--headless'] } : { channel: 'chromium' }),
   args: [
     `--disable-extensions-except=${EXT_DIR}`,
     `--load-extension=${EXT_DIR}`,
     '--host-resolver-rules=MAP * 127.0.0.1',
-    '--no-proxy-server'
+    '--no-proxy-server',
+    ...(process.env.ROCKYWEB_CHROME ? ['--headless=new'] : []) // older Chrome: name the mode that loads extensions
   ],
   viewport: { width: 1280, height: 800 }
 });
@@ -218,6 +304,67 @@ try {
     assert.notEqual(await web.evaluate(() => getComputedStyle(document.querySelector('header')).display), 'none');
   });
 
+  await check('inline cookie banner at the top of the page is rejected; the same block lower down is left alone', async () => {
+    await web.goto(at('inline.test', '/inline-banner'));
+    assert.equal(await poll(() => web.evaluate(() => window.__choice), 8000), 'reject');
+    await web.goto(at('inline2.test', '/inline-low'));
+    await sleep(4000);
+    assert.equal(await web.evaluate(() => window.__choice || null), null);
+  });
+
+  await check('NHS-like banner: "Reject analytics cookies" pressed despite its accept-looking id; the settings link is never followed', async () => {
+    const url = at('nhslike.test', '/nhs-like');
+    await web.goto(url);
+    assert.ok(await poll(() => web.evaluate(() => window.__clicks.includes('reject')), 10000), 'rejected');
+    await sleep(1500);
+    assert.deepEqual(await web.evaluate(() => window.__clicks), ['reject']);
+    assert.equal(web.url(), url, 'no navigation');
+  });
+
+  await check('Ryanair-like dialogue: "No, thanks" pressed, never "Yes, I agree"', async () => {
+    const url = at('ryanlike.test', '/ryanair-like');
+    await web.goto(url);
+    assert.ok(await poll(() => web.evaluate(() => window.__clicks.includes('reject')), 10000), 'rejected');
+    await sleep(1500);
+    const clicks = await web.evaluate(() => window.__clicks);
+    assert.ok(!clicks.includes('accept'), clicks.join(','));
+    assert.equal(web.url(), url, 'no navigation');
+  });
+
+  await check('AppConsent-like banner inside an address-less iframe: "Continue without accepting", never accept', async () => {
+    const url = at('framecmp.test', '/appconsent-like');
+    await web.goto(url);
+    assert.ok(await poll(() => web.evaluate(() => window.__clicks.includes('reject')), 10000), 'rejected');
+    await sleep(1500);
+    const clicks = await web.evaluate(() => window.__clicks);
+    assert.ok(!clicks.includes('accept'), clicks.join(','));
+    assert.equal(web.url(), url, 'no navigation');
+  });
+
+  await check('a settings layer that cannot be finished is closed and the banner refused, never left open', async () => {
+    const url = at('deadend.test', '/settings-dead-end');
+    await web.goto(url);
+    assert.ok(await poll(() => web.evaluate(() => window.__clicks.includes('reject')), 12000), JSON.stringify(await web.evaluate(() => window.__clicks)));
+    const clicks = await web.evaluate(() => window.__clicks);
+    assert.ok(!clicks.includes('accept'), clicks.join(','));
+    assert.equal(await web.evaluate(() => !!document.querySelector('[role="dialog"]:not([hidden])')), false, 'no dialogue left open');
+    assert.equal(web.url(), url);
+  });
+
+  await check('a "No thanks" whose accessible name says accept is never pressed', async () => {
+    await web.goto(at('fakeno.test', '/fake-no-thanks'));
+    await sleep(6000);
+    assert.deepEqual(await web.evaluate(() => window.__clicks), []);
+  });
+
+  await check('OneTrust API grants exactly the functional group when its description says "necessary"', async () => {
+    await web.goto(at('cmpgroups.test', '/onetrust-groups'));
+    await poll(() => web.evaluate(() => window.__ot), 10000);
+    await sleep(300);
+    assert.equal(await web.evaluate(() => window.__ot), 'api-reject');
+    assert.deepEqual(await web.evaluate(() => window.__granted), ['C0003:1']);
+  });
+
   await check('popup state reports the handled popup for the tab', async () => {
     await web.goto(at('cmp.test', '/onetrust'));
     await poll(() => web.evaluate(() => window.__ot), 10000);
@@ -235,6 +382,32 @@ try {
     const text = await poll(() => pop.evaluate(() => (document.querySelector('.stats') ? document.body.innerText : null)), 5000);
     await pop.close();
     assert.ok(!/\b(null|undefined)\b/.test(text), `popup text: ${text}`);
+  });
+
+  await check('popup on a browser page: the gear button opens settings', async () => {
+    const tabId = await ext.evaluate(() => chrome.tabs.create({ url: 'chrome://version/', active: false }).then((t) => t.id));
+    await sleep(500);
+    const pop = await context.newPage();
+    await pop.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}`);
+    await poll(() => pop.evaluate(() => !!document.querySelector('.unsupported')), 5000);
+    const gear = await pop.evaluate(() => { const g = document.getElementById('gear'); return { hidden: g.hidden, label: g.getAttribute('aria-label'), pressed: g.getAttribute('aria-pressed') }; });
+    assert.equal(gear.hidden, false);
+    assert.equal(gear.label, 'Advanced settings');
+    assert.equal(gear.pressed, null, 'not a toggle here');
+    await pop.focus('#gear');
+    // The popup closes itself; Chrome opens the options page or focuses the one already open.
+    await pop.keyboard.press('Enter').catch(() => {});
+    // Ask the settings pages themselves: older Chrome hides extension URLs from tabs.query.
+    const active = await poll(async () => {
+      for (const pg of context.pages()) {
+        if (pg.isClosed() || !pg.url().includes('/options.html')) continue;
+        if (await pg.evaluate(() => document.visibilityState === 'visible').catch(() => false)) return true;
+      }
+      return null;
+    }, 5000);
+    assert.ok(active, 'options page shown');
+    if (!pop.isClosed()) await pop.close();
+    await ext.evaluate((id) => chrome.tabs.remove(id), tabId);
   });
 
   await check('Off tier: dynamic allowAllRequests bypass lets the ad load, nothing hidden', async () => {
@@ -349,6 +522,11 @@ try {
     assert.equal(r.ok, false);
     const r2 = await msg(ACTIONS.CONSENT_HANDLED, { cmp: 'OneTrust' });
     assert.equal(r2.error, 'forbidden');
+    // Inherited names are not actions.
+    for (const action of ['toString', '__proto__', 'constructor', 'hasOwnProperty']) {
+      const r3 = await msg(action, {});
+      assert.deepEqual(r3, { ok: false, error: 'unknown_action' }, action);
+    }
   });
 
   await check('stats were persisted', async () => {

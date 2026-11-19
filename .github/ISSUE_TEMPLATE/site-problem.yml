@@ -1,0 +1,46 @@
+name: A website breaks or a cookie banner is missed
+description: Something on a website does not work, or a cookie banner was not answered the way you chose.
+labels: [site]
+body:
+  - type: markdown
+    attributes:
+      value: Please leave out anything personal. No cookies, account pages, or screenshots showing your details.
+  - type: input
+    id: url
+    attributes:
+      label: Page address
+      description: A public page that shows the problem, without login or personal query strings.
+      placeholder: https://www.example.com/news/article
+    validations:
+      required: true
+  - type: dropdown
+    id: problem
+    attributes:
+      label: What happened
+      options:
+        - The cookie banner was not answered
+        - The cookie banner was answered the wrong way
+        - Part of the page is missing or broken
+        - The page will not scroll
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: mode
+    attributes:
+      label: Mode shown in the toolbar popup
+      placeholder: balanced, strict, consent, custom, Light
+  - type: input
+    id: country
+    attributes:
+      label: Country you browsed from
+      description: Sites show different banners in different countries.
+  - type: textarea
+    id: details
+    attributes:
+      label: What you expected, and anything else
+  - type: input
+    id: versions
+    attributes:
+      label: Rockyweb and Chrome versions
+      placeholder: Rockyweb 1.1.0, Chrome 157

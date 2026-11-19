@@ -4,12 +4,13 @@
 
   const RW = window.RockyShared;
   const A = RW.ACTIONS;
-  const { h, icon, send, toggle, seg, tri, fmt, errorText } = RW.UI;
+  const { h, icon, send, toggle, seg, tri, fmt, errorText, keepFocus } = RW.UI;
 
   const main = document.getElementById('main');
   const gear = document.getElementById('gear');
 
-  const CONTENT_SCRIPT_FILES = ['shared/constants.js', 'shared/domain.js', 'shared/ai-policy.js', 'engines/consent-rules.js', 'content.js'];
+  const CONTENT_SCRIPT_FILES = ['shared/constants.js', 'shared/domain.js', 'shared/ai-policy.js', 'shared/page-edits.js', 'engines/consent-rules.js', 'content.js'];
+  const EDIT_SOURCE = { described: 'you asked', suggested: 'suggested, you applied it', automatic: 'applied automatically' };
   const ADJUSTMENT_SOURCE = { model: 'decided on this device', memory: 'remembered from an earlier visit', your_choice: 'your setting for this site' };
   const NEWSLETTER_LABEL = { auto: 'automatic', hide: 'hide', keep: 'leave alone' };
   const MODE_LABEL = { off: 'off', consent_only: 'consent', balanced: 'balanced', strict: 'strict', custom: 'custom' };
@@ -25,11 +26,15 @@
   let dirty = false;
   let errorMsg = '';
   let showAdjustments = false;
-  // "Describe a change": optional, on-device only.
-  const describe = { open: false, availability: null, busy: false, text: '', plan: null, preview: null, error: '', undo: undefined, applied: false };
+  let showChanges = false;
+  // "Describe a change": optional, on-device only. ops are page edits, shown live on the page until applied or cancelled.
+  const describe = { open: false, availability: null, busy: false, text: '', plan: null, preview: null, ops: [], notes: [], error: '', applied: null, saved: null, askAgain: false };
+  let previewPort = null;
 
   gear.append(icon('gear'));
   gear.addEventListener('click', () => {
+    // No per-site controls on browser pages, so the same button goes straight to settings.
+    if (data && !data.supported) { openSettings(); return; }
     advanced = !advanced;
     gear.setAttribute('aria-pressed', String(advanced));
     gear.title = advanced ? 'Back' : 'Advanced settings';
@@ -71,8 +76,8 @@
     await load();
   }
 
-  async function optOutAdjustments() {
-    try { await send(A.AI_SITE_OPT_OUT, { tabId: tab.id }); } catch (err) { errorMsg = errorText(err); }
+  async function optOutAdjustments(kind) {
+    try { await send(A.AI_SITE_OPT_OUT, { tabId: tab.id, kind }); } catch (err) { errorMsg = errorText(err); }
     await load();
   }
 
@@ -101,25 +106,29 @@
     window.close();
   }
 
+  // Close only once Chrome has the request; older versions drop it if the popup closes first.
   function openSettings() {
-    chrome.runtime.openOptionsPage();
-    window.close();
+    Promise.resolve(chrome.runtime.openOptionsPage()).catch(() => {}).finally(() => window.close());
   }
 
   // ---- render
 
-  function render() {
+  const render = () => keepFocus(renderView);
+
+  function renderView() {
     main.replaceChildren();
     if (!data) {
       main.append(h('p', { class: 'error', role: 'alert', text: errorMsg || 'Could not load Rockyweb.' }));
       return;
     }
     if (!data.supported) {
-      gear.hidden = true;
+      gear.hidden = false;
+      gear.removeAttribute('aria-pressed');
       main.append(renderUnsupported());
       return;
     }
     gear.hidden = false;
+    gear.setAttribute('aria-pressed', String(advanced));
     if (errorMsg) main.append(h('p', { class: 'error', role: 'alert', text: errorMsg }));
     if (advanced) main.append(...renderAdvanced(data.config));
     else main.append(...renderMain(data.config).filter(Boolean));
@@ -165,8 +174,67 @@
         popup
           ? stat(popup.method === 'hidden' ? 'hidden' : DECISION_WORD[popup.decision] || 'done', `cookies · ${popup.cmp.toLowerCase()}`, true)
           : stat('none', 'cookie popup', true, true)),
-      renderAdjustments()
+      renderAdjustments(),
+      renderChanges(cfg)
     ];
+  }
+
+  // ---- changes on this site: every saved page edit, with on, off and delete
+
+  async function setEdit(id, enabled) {
+    await mutate(A.SET_PAGE_EDIT, { siteKey: data.siteKey, id, enabled });
+  }
+
+  async function deleteEdit(id) {
+    await mutate(A.DELETE_PAGE_EDIT, { siteKey: data.siteKey, id });
+  }
+
+  async function fixAction(action, id) {
+    try { await send(action, { tabId: tab.id, id }); errorMsg = ''; } catch (err) { errorMsg = errorText(err); }
+    await load();
+  }
+
+  function editMeta(e) {
+    const skipped = (data.editSkipped || []).find((x) => x.id === e.id);
+    if (skipped && e.enabled) return `not applied on this page: it ${skipped.reason || 'did not fit this page'}`;
+    const who = EDIT_SOURCE[e.source] || '';
+    return e.request ? `${who}: “${e.request}”` : who;
+  }
+
+  function renderChanges(cfg) {
+    const edits = data.pageEdits || [];
+    const fixes = data.pageFixes || [];
+    if (!edits.length && !fixes.length) return null;
+    const count = `changes on this site · ${edits.length}${fixes.length ? ` · ${fixes.length} suggested` : ''}`;
+    const wrap = h('section', { class: 'adjustments changes', 'aria-label': 'Changes on this site' },
+      h('button', {
+        class: 'adj-toggle', type: 'button', 'aria-expanded': String(showChanges),
+        onclick: () => { showChanges = !showChanges; render(); }
+      }, count, icon('chevron', `chev${showChanges ? ' up' : ''}`)));
+    if (!showChanges) return wrap;
+    const ul = h('ul', { class: 'adj-list' });
+    for (const f of fixes) {
+      const kind = RW.PAGE_FIX_KINDS[f.kind] || {};
+      ul.append(h('li', { class: 'suggestion' },
+        h('div', { class: 'adj-text' },
+          h('div', { text: kind.ask || 'a page fix' }),
+          h('div', { class: 'adj-meta', text: f.text ? `suggested for “${f.text}”` : 'suggested for this page' })),
+        h('button', { class: 'adj-btn primary', type: 'button', onclick: () => fixAction(A.APPLY_PAGE_FIX, f.id), text: 'apply' }),
+        h('button', { class: 'icon-btn', type: 'button', title: 'Not this', 'aria-label': `Dismiss: ${kind.ask || 'suggestion'}`, onclick: () => fixAction(A.DISMISS_PAGE_FIX, f.id) }, icon('x'))));
+    }
+    for (const e of edits) {
+      ul.append(h('li', { class: e.enabled ? '' : 'off' },
+        h('div', { class: 'adj-text' },
+          h('div', { class: 'edit-label', text: e.label }),
+          h('div', { class: 'adj-meta', text: editMeta(e) })),
+        toggle(e.enabled, (v) => setEdit(e.id, v), `${e.label}: on or off`),
+        h('button', { class: 'icon-btn', type: 'button', title: 'Delete this change', 'aria-label': `Delete: ${e.label}`, onclick: () => deleteEdit(e.id) }, icon('trash'))));
+    }
+    wrap.append(ul);
+    if (cfg.pageFixesSite !== 'off' && (fixes.length || edits.some((e) => e.source !== 'described'))) {
+      wrap.append(h('button', { class: 'adj-optout', type: 'button', onclick: () => mutate(A.SET_SITE_PAGE_FIXES, { siteKey: data.siteKey, value: 'off' }), text: 'don’t suggest page fixes on this site' }));
+    }
+    return wrap;
   }
 
   // Discreet list of what Rockyweb adjusted on this page by itself, with undo.
@@ -180,14 +248,25 @@
     const wrap = h('section', { class: 'adjustments', 'aria-label': 'Automatic adjustments' }, toggleBtn);
     if (showAdjustments) {
       const ul = h('ul', { class: 'adj-list' });
+      const overlays = list.filter((a) => a.kind !== RW.AI_CONSENT_KIND);
       for (const a of list) {
+        if (a.kind === RW.AI_CONSENT_KIND) {
+          // A click cannot be taken back, so say what happened and how to change it on the site.
+          ul.append(h('li', { class: 'adj-consent' },
+            h('div', { class: 'adj-text' },
+              h('div', { text: `Answered the cookie banner: clicked “${a.label}”` }),
+              h('div', { class: 'adj-meta', text: `${ADJUSTMENT_SOURCE[a.source] || ''}. To change your answer, use the site’s own cookie settings link, often at the bottom of the page.` }),
+              h('button', { class: 'adj-optout', type: 'button', onclick: () => optOutAdjustments(RW.AI_CONSENT_KIND), text: 'don’t answer cookie banners for me on this site' }))));
+          continue;
+        }
         ul.append(h('li', {},
           h('div', { class: 'adj-text' },
             h('div', { text: 'Hid a newsletter overlay on this page' }),
             h('div', { class: 'adj-meta', text: ADJUSTMENT_SOURCE[a.source] || '' })),
           h('button', { class: 'adj-btn', type: 'button', onclick: () => undoAdjustment(a.id), text: 'undo' })));
       }
-      wrap.append(ul, h('button', { class: 'adj-optout', type: 'button', onclick: optOutAdjustments, text: 'don’t do this on this site' }));
+      wrap.append(ul);
+      if (overlays.length) wrap.append(h('button', { class: 'adj-optout', type: 'button', onclick: () => optOutAdjustments(), text: 'don’t do this on this site' }));
     }
     return wrap;
   }
@@ -259,25 +338,69 @@
     return null;
   }
 
+  // Live preview on the page while the popup is open; it disappears when the popup closes.
+  function pagePort() {
+    if (previewPort) return previewPort;
+    try {
+      previewPort = chrome.tabs.connect(tab.id, { name: 'rockyweb-preview', frameId: 0 });
+      previewPort.onDisconnect.addListener(() => { previewPort = null; });
+    } catch (_) { previewPort = null; }
+    return previewPort;
+  }
+
+  function showOnPage(ops) {
+    const port = pagePort();
+    if (port) { try { port.postMessage({ action: A.PREVIEW_PAGE_EDITS, payload: { ops } }); } catch (_) { /* tab went away */ } }
+  }
+
+  function clearOnPage() {
+    if (previewPort) { try { previewPort.postMessage({ action: A.CLEAR_PAGE_PREVIEW, payload: {} }); } catch (_) { /* gone */ } }
+  }
+
+  async function toPage(action, payload) {
+    try { return await chrome.tabs.sendMessage(tab.id, { action, payload: payload || {} }, { frameId: 0 }); } catch (_) { return null; }
+  }
+
   async function previewChange(cfg) {
     const text = describe.text.trim().slice(0, 300);
     if (!text) return;
+    Object.assign(describe, { error: '', plan: null, ops: [], notes: [], saved: null, applied: null });
+    clearOnPage();
+    // Asked before on this site: it is saved, so the model is not asked again.
+    const saved = !describe.askAgain && RW.findSavedPageEdit(data.pageEdits, text);
+    describe.askAgain = false;
+    if (saved) { describe.saved = saved.id; render(); return; }
     describe.busy = true;
-    describe.error = '';
-    describe.plan = null;
     render();
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 30000);
     let session = null;
     try {
+      const page = data.aiSettings && data.aiSettings.pageEdits !== false ? await toPage(A.GET_PAGE_OUTLINE) : null;
+      const outline = page && Array.isArray(page.outline) ? page.outline : null;
       session = await LanguageModel.create(Object.assign({}, RW.AI_MODEL_OPTIONS, {
-        initialPrompts: RW.planInitialPrompts(), signal: ctrl.signal
+        initialPrompts: outline ? RW.editInitialPrompts() : RW.planInitialPrompts(), signal: ctrl.signal
       }));
-      const raw = await session.prompt(RW.planRequest(text), { responseConstraint: RW.AI_PLAN_SCHEMA, signal: ctrl.signal });
+      const raw = await session.prompt(outline ? RW.editRequest(text, outline) : RW.planRequest(text),
+        { responseConstraint: outline ? RW.planWithEditsSchema() : RW.AI_PLAN_SCHEMA, signal: ctrl.signal });
       const plan = RW.checkPlan(RW.parsePlan(raw), text, cfg);
-      if (!plan) describe.error = 'Rockyweb could not turn that into settings. Try rephrasing it.';
-      else if (!plan.changes.length && !plan.unsupported.length) describe.error = 'That does not seem to ask for any change.';
-      else { describe.plan = plan; describe.preview = RW.describePlan(plan, cfg); }
+      let ops = [];
+      let notes = [];
+      if (outline && plan) {
+        const parsed = RW.parsePlanEdits(raw, outline);
+        notes = parsed.notes;
+        if (parsed.edits.length) {
+          const res = await toPage(A.RESOLVE_PAGE_EDITS, { edits: parsed.edits });
+          ops = (res && Array.isArray(res.ops)) ? res.ops : [];
+          notes = notes.concat((res && res.notes) || []);
+        }
+      }
+      if (!plan) describe.error = 'Rockyweb could not turn that into a change. Try rephrasing it.';
+      else if (!plan.changes.length && !ops.length && !plan.unsupported.length && !notes.length) describe.error = 'That does not seem to ask for any change.';
+      else {
+        Object.assign(describe, { plan, preview: RW.describePlan(plan, cfg), ops, notes });
+        if (ops.length) showOnPage(ops);
+      }
     } catch (_) {
       describe.error = ctrl.signal.aborted ? 'That took too long. Please try again.' : 'On-device AI could not answer just now.';
     } finally {
@@ -288,35 +411,41 @@
     }
   }
 
+  // Saved as one change for this site: listed under "changes on this site", reversible there.
   async function applyPlan() {
     const plan = describe.plan;
     if (!plan) return;
-    describe.undo = data.profile ? JSON.parse(JSON.stringify(data.profile)) : null;
+    const words = describe.ops.map(RW.describePageEditOp).concat(describe.preview.map((l) => `${l.label} ${l.to}`));
     try {
-      for (const c of plan.changes) {
-        if (c.op === 'site_mode') await send(A.SET_SITE_TIER, { siteKey: data.siteKey, tier: c.value });
-        else if (c.op === 'newsletter_prompts') await send(A.SET_SITE_NEWSLETTER, { siteKey: data.siteKey, value: c.value });
-        else await send(A.SET_SITE_CUSTOM_OPTION, { siteKey: data.siteKey, key: c.key, value: c.value });
-      }
-      describe.applied = true;
-      dirty = true;
+      const r = await send(A.SAVE_PAGE_EDIT, {
+        siteKey: data.siteKey, request: describe.text.trim().slice(0, 200), label: words.join(', ').slice(0, 90),
+        ops: describe.ops, settings: plan.changes
+      });
+      describe.applied = r.edit.id;
+      if (plan.changes.length) dirty = true;
     } catch (err) {
       describe.error = errorText(err);
     }
+    clearOnPage();
     describe.plan = null;
     await load();
   }
 
   async function undoPlan() {
     try {
-      await send(A.RESTORE_SITE_PROFILE, { siteKey: data.siteKey, profile: describe.undo });
-      describe.applied = false;
-      describe.undo = undefined;
+      await send(A.DELETE_PAGE_EDIT, { siteKey: data.siteKey, id: describe.applied });
+      describe.applied = null;
       dirty = true;
     } catch (err) {
       describe.error = errorText(err);
     }
     await load();
+  }
+
+  function cancelPlan() {
+    clearOnPage();
+    describe.plan = null;
+    render();
   }
 
   function renderDescribe(cfg) {
@@ -332,8 +461,10 @@
     sec.append(btn);
     if (!describe.open) return sec;
     const blocker = describeBlocker(cfg);
+    const edits = !data.aiSettings || data.aiSettings.pageEdits !== false;
     const input = h('textarea', {
-      class: 'describe-input', rows: '2', maxlength: '300', placeholder: 'e.g. hide newsletter prompts but keep my current tracker settings',
+      class: 'describe-input', rows: '2', maxlength: '300',
+      placeholder: edits ? 'e.g. hide the app banner and make the text bigger' : 'e.g. hide newsletter prompts but keep my current tracker settings',
       'aria-label': 'Describe a change for this site', disabled: !!blocker || describe.busy
     });
     input.value = describe.text;
@@ -344,22 +475,34 @@
       return sec;
     }
     if (describe.applied) {
-      sec.append(h('div', { class: 'describe-done' }, h('span', { text: 'Changes applied.' }),
+      sec.append(h('div', { class: 'describe-done' }, h('span', { text: 'Applied and saved for this site.' }),
         h('button', { class: 'adj-btn', type: 'button', onclick: undoPlan, text: 'undo' })));
+    }
+    const saved = describe.saved && (data.pageEdits || []).find((e) => e.id === describe.saved);
+    if (saved) {
+      sec.append(h('div', { class: 'describe-saved' },
+        h('p', { class: 'note', text: `You asked for this on this site before, and it is saved${saved.enabled ? '' : ' (switched off)'}: ${saved.label}.` }),
+        h('div', { class: 'describe-actions' },
+          h('button', { class: 'adj-btn primary', type: 'button', onclick: () => setEdit(saved.id, !saved.enabled), text: saved.enabled ? 'switch off' : 'switch on' }),
+          h('button', { class: 'adj-btn', type: 'button', onclick: () => { describe.askAgain = true; previewChange(cfg); }, text: 'ask again' }))));
+      return sec;
     }
     if (describe.error) sec.append(h('p', { class: 'note warn', role: 'alert', text: describe.error }));
     if (describe.plan) {
       const ul = h('ul', { class: 'plan' });
+      for (const op of describe.ops) ul.append(h('li', {}, h('b', { text: RW.describePageEditOp(op) })));
       for (const line of describe.preview) ul.append(h('li', {}, h('span', { text: line.label }), h('span', { class: 'dim', text: ` ${line.from} → ` }), h('b', { text: line.to })));
-      if (!describe.preview.length) ul.append(h('li', { class: 'dim', text: 'No settings would change.' }));
-      ul.append(h('li', { class: 'dim', text: 'Everything else stays as it is.' }));
+      const nothing = !describe.preview.length && !describe.ops.length;
+      if (nothing) ul.append(h('li', { class: 'dim', text: 'Nothing would change.' }));
+      ul.append(h('li', { class: 'dim', text: describe.ops.length ? 'Shown on the page now. Nothing is saved until you apply.' : 'Everything else stays as it is.' }));
       sec.append(ul);
       if (describe.plan.unsupported.length) {
         sec.append(h('p', { class: 'note warn', text: `Not supported: ${describe.plan.unsupported.join('; ')}` }));
       }
+      if (describe.notes.length) sec.append(h('p', { class: 'note warn', text: `Left out: ${describe.notes.join('; ')}` }));
       sec.append(h('div', { class: 'describe-actions' },
-        h('button', { class: 'adj-btn primary', type: 'button', disabled: !describe.preview.length, onclick: applyPlan, text: 'apply' }),
-        h('button', { class: 'adj-btn', type: 'button', onclick: () => { describe.plan = null; render(); }, text: 'cancel' })));
+        h('button', { class: 'adj-btn primary', type: 'button', disabled: nothing, onclick: applyPlan, text: 'apply' }),
+        h('button', { class: 'adj-btn', type: 'button', onclick: cancelPlan, text: 'cancel' })));
     } else {
       sec.append(h('div', { class: 'describe-actions' },
         h('button', { class: 'adj-btn primary', type: 'button', disabled: describe.busy, onclick: () => previewChange(cfg), text: describe.busy ? 'thinking…' : 'preview' })));

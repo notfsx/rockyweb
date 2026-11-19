@@ -15,6 +15,9 @@
     PICKER_REMOVE_SELECTOR: 'pickerRemoveSelector',
     AI_EVALUATE_CANDIDATE: 'aiEvaluateCandidate',
     AI_ADJUSTMENT_APPLIED: 'aiAdjustmentApplied',
+    AI_EVALUATE_CONSENT: 'aiEvaluateConsent',
+    AI_CONSENT_ATTEMPT: 'aiConsentAttempt',
+    AI_CONSENT_RESULT: 'aiConsentResult',
 
     // background -> content script
     CONSENT_FOLLOWUP: 'consentFollowup',
@@ -47,10 +50,23 @@
     SET_AI_AUTO_OPTIMISE: 'setAiAutoOptimise',
     GET_AI_STATUS: 'getAiStatus',
     SET_SITE_NEWSLETTER: 'setSiteNewsletter',
-    RESTORE_SITE_PROFILE: 'restoreSiteProfile',
     AI_UNDO_ADJUSTMENT: 'aiUndoAdjustment',
     AI_SITE_OPT_OUT: 'aiSiteOptOut',
-    CLEAR_AI_MEMORY: 'clearAiMemory'
+    CLEAR_AI_MEMORY: 'clearAiMemory',
+    GET_PAGE_OUTLINE: 'getPageOutline',
+    RESOLVE_PAGE_EDITS: 'resolvePageEdits',
+    PREVIEW_PAGE_EDITS: 'previewPageEdits',
+    CLEAR_PAGE_PREVIEW: 'clearPagePreview',
+    PAGE_EDITS_CHANGED: 'pageEditsChanged',
+    APPLY_PAGE_EDITS: 'applyPageEdits',
+    PAGE_FIX_CANDIDATES: 'pageFixCandidates',
+    APPLY_PAGE_FIX: 'applyPageFix',
+    DISMISS_PAGE_FIX: 'dismissPageFix',
+    SAVE_PAGE_EDIT: 'savePageEdit',
+    SET_PAGE_EDIT: 'setPageEdit',
+    DELETE_PAGE_EDIT: 'deletePageEdit',
+    SET_AI_PAGE_SETTINGS: 'setAiPageSettings',
+    SET_SITE_PAGE_FIXES: 'setSitePageFixes'
   });
 
   RW.TIER_ORDER = Object.freeze(['off', 'consent_only', 'balanced', 'strict', 'custom']);
@@ -106,7 +122,7 @@
 
   RW.STORAGE_KEYS = Object.freeze([
     'schemaVersion', 'globalDefaultTier', 'globalCustomConfig', 'siteProfiles', 'learnedTrackers', 'stats',
-    'operatingMode', 'aiSettings', 'aiMemory'
+    'operatingMode', 'aiSettings', 'aiMemory', 'pageEdits'
   ]);
 
   RW.SCHEMA_VERSION = 2;
@@ -116,6 +132,10 @@
     expectedInputs: [{ type: 'text', languages: ['en'] }],
     expectedOutputs: [{ type: 'text', languages: ['en'] }]
   });
+
+  // Code switch for answering unknown cookie banners with the on-device model. When false the
+  // feature never runs, whatever the settings say.
+  RW.AI_CONSENT_ENABLED = true;
 
   RW.OPERATING_META = Object.freeze({
     full: { label: 'Full', description: 'Everything Rockyweb offers, including tracker learning and automatic optimisation if you turn it on.' },

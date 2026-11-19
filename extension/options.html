@@ -21,23 +21,23 @@
         <a href="#custom">custom</a>
         <a href="#websites">websites</a>
         <a href="#trackers">trackers</a>
-        <a href="#hidden">hidden</a>
+        <a href="#hidden">page changes</a>
         <a href="#data">data</a>
       </nav>
     </header>
 
     <main class="content" id="content">
       <section id="protection" class="section" hidden>
-        <h2>protection</h2>
+        <h1>protection</h1>
         <p class="lead">The default mode applies to every website that doesn't have its own. Change a single site from the toolbar popup.</p>
         <div class="setting">
-          <div class="setting-text"><h3>default mode</h3><p id="tierDescription"></p></div>
+          <div class="setting-text"><h2>default mode</h2><p id="tierDescription"></p></div>
           <div class="setting-ctl" id="tierButtons"></div>
         </div>
         <dl class="facts" id="tierFacts"></dl>
         <div class="setting">
           <div class="setting-text">
-            <h3>how hard Rockyweb works</h3>
+            <h2>how hard Rockyweb works</h2>
             <p id="operatingDescription"></p>
           </div>
           <div class="setting-ctl" id="operatingButtons"></div>
@@ -45,29 +45,43 @@
         <p class="precedence">Your explicit choices always come first, then the mode for each site, then Light, then automatic optimisation. Light never undoes a choice you made.</p>
         <div class="setting" id="aiSetting">
           <div class="setting-text">
-            <h3 id="aiTitle">automatically optimise protection for each site</h3>
-            <p>Uses Chrome's on-device AI to make small, reversible adjustments, such as hiding an unsolicited newsletter overlay on an article. Nothing leaves your device and nothing asks for your attention. Every adjustment can be undone from the toolbar.</p>
+            <h2 id="aiTitle">automatically optimise protection for each site</h2>
+            <p>Uses Chrome's on-device AI for small adjustments: hiding an unsolicited newsletter overlay on an article, which you can undo from the toolbar, and answering a cookie banner Rockyweb does not recognise by clicking its refuse button when your cookie choices refuse something. For that, the banner's heading and button labels are given to the on-device model. Nothing leaves your device. A banner answer is listed in the toolbar; it cannot be unclicked, but the site's own cookie settings link reopens its choices.</p>
             <p class="ai-status" id="aiStatus" role="status" aria-live="polite"></p>
             <div class="ai-setup" id="aiSetup" hidden></div>
           </div>
           <div class="setting-ctl" id="aiToggle"></div>
         </div>
+        <div class="setting">
+          <div class="setting-text">
+            <h2>let AI change pages, not only settings</h2>
+            <p>With this on, "describe a change" in the toolbar can also hide, unstick, resize and recolour parts of a page, from a list of safe changes. You see it on the page before you apply it. Every change is saved for that website, so you never have to ask twice, and listed in the toolbar and under <a href="#hidden">page changes</a>, where you can switch it off or delete it.</p>
+          </div>
+          <div class="setting-ctl" id="pageEditsToggle"></div>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <h2>page fixes</h2>
+            <p id="pageFixesDescription"></p>
+          </div>
+          <div class="setting-ctl" id="pageFixesButtons"></div>
+        </div>
       </section>
 
       <section id="cookies" class="section" hidden>
-        <h2>cookies</h2>
+        <h1>cookies</h1>
         <p class="lead">Your answer to every cookie popup. Rockyweb uses the popup provider's own controls when it can, otherwise clicks the right buttons, then unlocks pages left unscrollable. Strict mode always rejects everything optional.</p>
         <div id="consentRows"></div>
       </section>
 
       <section id="custom" class="section" hidden>
-        <h2>custom mode</h2>
+        <h1>custom mode</h1>
         <p class="lead">What the <span class="main">custom</span> default mode turns on. Changing one of these while another mode is the default makes custom the default, starting from that mode's settings.</p>
         <div id="engineRows"></div>
       </section>
 
       <section id="websites" class="section" hidden>
-        <h2>websites</h2>
+        <h1>websites</h1>
         <p class="lead">Sites with their own mode, domain choices or hidden elements. A setting covers the whole domain, so <code>shop.example.com</code> uses <code>example.com</code>.</p>
         <form class="tools" id="addSiteForm">
           <input class="input" id="addSiteInput" placeholder="add a website, e.g. example.com" autocomplete="off" aria-label="Website to add" required>
@@ -81,7 +95,7 @@
       </section>
 
       <section id="trackers" class="section" hidden>
-        <h2>trackers</h2>
+        <h1>trackers</h1>
         <p class="lead">Third-party domains Rocky has sniffed out. One that follows you to <span class="main">3 or more</span> websites is learned: balanced strips its cookies and strict blocks it. Payment, login and captcha providers are never restricted automatically, and shared CDNs at most lose their cookies.</p>
         <p class="summary" id="trackerSummary"></p>
         <div class="tools">
@@ -90,13 +104,13 @@
         </div>
         <div class="list" id="trackerList"></div>
         <div class="setting danger-zone">
-          <div class="setting-text"><h3>reset learning</h3><p>Forget every learned tracker. Your own choices for individual domains are kept.</p></div>
+          <div class="setting-text"><h2>reset learning</h2><p>Forget every learned tracker. Your own choices for individual domains are kept.</p></div>
           <div class="setting-ctl"><button class="btn danger" id="resetLearned" type="button">reset</button></div>
         </div>
       </section>
 
       <section id="hidden" class="section" hidden>
-        <h2>hidden elements</h2>
+        <h1>page changes</h1>
         <p class="lead">Elements you hid with the picker (popup, gear, hide an element) or added here. They stay hidden on that site in every mode except off.</p>
         <form class="tools" id="addSelectorForm">
           <input class="input" id="selSiteInput" placeholder="example.com" autocomplete="off" aria-label="Website" required>
@@ -104,29 +118,32 @@
           <button class="btn" type="submit">hide</button>
         </form>
         <div class="list" id="hiddenList"></div>
+        <h2 class="sub">described changes and page fixes</h2>
+        <p class="lead">Changes you described in the toolbar, and page fixes you applied or Rockyweb applied for you. Switching one off puts the page, and any setting it changed, back as it was.</p>
+        <div class="list" id="editList"></div>
       </section>
 
       <section id="data" class="section" hidden>
-        <h2>data</h2>
+        <h1>data</h1>
         <div class="stats" id="statGrid"></div>
         <div class="setting">
-          <div class="setting-text"><h3>statistics</h3><p>Counted on this device only.</p></div>
+          <div class="setting-text"><h2>statistics</h2><p>Counted on this device only.</p></div>
           <div class="setting-ctl"><button class="btn" id="resetStatsBtn" type="button">reset</button></div>
         </div>
         <div class="setting">
-          <div class="setting-text"><h3>export</h3><p>Every setting, website and learned tracker as <code>rockyweb-settings.json</code>.</p></div>
+          <div class="setting-text"><h2>export</h2><p>Every setting, website and learned tracker as <code>rockyweb-settings.json</code>.</p></div>
           <div class="setting-ctl"><button class="btn" id="exportBtn" type="button">export</button></div>
         </div>
         <div class="setting">
-          <div class="setting-text"><h3>import</h3><p>Replaces your current settings. Every field is checked before it is used.</p></div>
+          <div class="setting-text"><h2>import</h2><p>Replaces your current settings. Every field is checked before it is used.</p></div>
           <div class="setting-ctl"><label class="btn" id="importLabel"><input type="file" id="importFile" accept="application/json,.json" hidden>import</label></div>
         </div>
         <div class="setting">
-          <div class="setting-text"><h3>automatic adjustment memory</h3><p id="aiMemoryText">Decisions remembered for a week and undos remembered for 30 days, per website.</p></div>
+          <div class="setting-text"><h2>automatic adjustment memory</h2><p id="aiMemoryText">Decisions remembered for a week and undos remembered for 30 days, per website.</p></div>
           <div class="setting-ctl"><button class="btn" id="clearAiMemoryBtn" type="button">forget</button></div>
         </div>
         <div class="setting">
-          <div class="setting-text"><h3>reset everything</h3><p>Back to balanced. Forgets all websites, trackers, hidden elements, automatic adjustments and statistics.</p></div>
+          <div class="setting-text"><h2>reset everything</h2><p>Back to balanced. Forgets all websites, trackers, hidden elements, automatic adjustments and statistics.</p></div>
           <div class="setting-ctl"><button class="btn danger" id="resetAllBtn" type="button">reset</button></div>
         </div>
         <div class="about" id="aboutPanel"></div>
@@ -138,6 +155,8 @@
   <script src="shared/constants.js"></script>
   <script src="shared/domain.js"></script>
   <script src="shared/config.js"></script>
+  <script src="shared/ai-policy.js"></script>
+  <script src="shared/page-edits.js"></script>
   <script src="ui/ui-kit.js"></script>
   <script src="options.js"></script>
 </body>

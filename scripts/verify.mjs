@@ -81,16 +81,16 @@ const handledByBackground = new Set([...bg.matchAll(/\[A\.([A-Z_]+)\]\s*:/g)].ma
 const handledByContent = new Set([...files.content.matchAll(/msg\.action === A\.([A-Z_]+)/g)].map((m) => m[1]));
 
 // content -> background
-const sentByContent = new Set([...files.content.matchAll(/\bsend\(A\.([A-Z_]+)/g)].map((m) => m[1]));
+const sentByContent = new Set([...files.content.matchAll(/\b(?:send|sendReport)\(A\.([A-Z_]+)/g)].map((m) => m[1]));
 // popup/options -> background
 const sentByPages = new Set();
 for (const src of [files.popup, files.options]) {
-  for (const m of src.matchAll(/\b(?:send|mutate|act)\(A\.([A-Z_]+)/g)) sentByPages.add(m[1]);
+  for (const m of src.matchAll(/\b(?:send|mutate|act|fixAction)\(A\.([A-Z_]+)/g)) sentByPages.add(m[1]);
 }
 // anything -> content via chrome.tabs.sendMessage({ action: A.X })
 const sentToContent = new Set();
 for (const src of [files.popup, files.background]) {
-  for (const m of src.matchAll(/action:\s*A\.([A-Z_]+)/g)) sentToContent.add(m[1]);
+  for (const m of src.matchAll(/action:\s*A\.([A-Z_]+)|\btoPage\(A\.([A-Z_]+)/g)) sentToContent.add(m[1] || m[2]);
 }
 
 for (const k of [...sentByContent, ...sentByPages]) {

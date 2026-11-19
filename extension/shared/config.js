@@ -9,6 +9,9 @@
   const SLIDER_STATES = ['allow', 'cookie_block', 'block'];
   const OPERATING_MODES = ['full', 'light'];
   const NEWSLETTER_CHOICES = ['auto', 'hide', 'keep'];
+  const COOKIE_AI_CHOICES = ['auto', 'off']; // 'off': never answer this site's unknown cookie banners with AI
+  const PAGE_FIX_SITE_CHOICES = ['auto', 'off']; // 'off': no proactive page fixes on this site
+  const PAGE_FIX_MODES = ['off', 'suggest', 'auto'];
   const LEARNED_STATUSES = ['allow', 'cookie_block', 'block'];
   const CATEGORY_KEYS = ['functional', 'analytics', 'marketing'];
   const BOOLEAN_KEYS = ['adBlockNetwork', 'cosmeticFiltering', 'aggressiveFiltering', 'stripUrlParams'];
@@ -173,7 +176,9 @@
       customOverrides: sanitizeOverrides(src.customOverrides),
       domainSliderOverrides: sanitizeSliders(src.domainSliderOverrides),
       customCosmeticSelectors: sanitizeSelectors(src.customCosmeticSelectors),
-      newsletterPrompts: NEWSLETTER_CHOICES.includes(src.newsletterPrompts) ? src.newsletterPrompts : 'auto'
+      newsletterPrompts: NEWSLETTER_CHOICES.includes(src.newsletterPrompts) ? src.newsletterPrompts : 'auto',
+      cookieBannerAi: COOKIE_AI_CHOICES.includes(src.cookieBannerAi) ? src.cookieBannerAi : 'auto',
+      pageFixes: PAGE_FIX_SITE_CHOICES.includes(src.pageFixes) ? src.pageFixes : 'auto'
     };
   }
 
@@ -181,7 +186,9 @@
     return !p || (!p.tier &&
       Object.keys(p.domainSliderOverrides || {}).length === 0 &&
       (p.customCosmeticSelectors || []).length === 0 &&
-      (!p.newsletterPrompts || p.newsletterPrompts === 'auto'));
+      (!p.newsletterPrompts || p.newsletterPrompts === 'auto') &&
+      (!p.cookieBannerAi || p.cookieBannerAi === 'auto') &&
+      (!p.pageFixes || p.pageFixes === 'auto'));
   }
 
   function sanitizeTracker(raw) {
@@ -220,10 +227,15 @@
     for (const [site, entries] of sites(src.decisions)) {
       const keep = {};
       for (const [k, v] of Object.entries(isObj(entries) ? entries : {}).slice(0, AI_MAX_PER_SITE)) {
-        if (!SIG_RE.test(k) || !isObj(v) || !['hide_overlay', 'leave_unchanged'].includes(v.action)) continue;
+        if (!SIG_RE.test(k) || !isObj(v) || !['hide_overlay', 'leave_unchanged', 'refuse_non_essential'].includes(v.action)) continue;
         const at = finiteOr(v.at, 0);
         if (t - at > AI_DECISION_TTL || typeof v.epoch !== 'string') continue;
         keep[k] = { action: v.action, at, epoch: v.epoch.slice(0, 16) };
+        // A verified cookie banner answer keeps the label it clicked, so a later visit clicks the same one.
+        if (v.action === 'refuse_non_essential') {
+          if (typeof v.label !== 'string' || !v.label.trim()) { delete keep[k]; continue; }
+          keep[k].label = v.label.replace(/[\u0000-\u001f]/g, ' ').slice(0, 60);
+        }
       }
       if (Object.keys(keep).length) out.decisions[site] = keep;
     }
@@ -264,8 +276,21 @@
       learnedTrackers,
       stats: sanitizeStats(src.stats),
       operatingMode: OPERATING_MODES.includes(src.operatingMode) ? src.operatingMode : 'full',
-      aiSettings: { autoOptimise: !!(isObj(src.aiSettings) && src.aiSettings.autoOptimise === true) },
-      aiMemory: sanitizeAiMemory(src.aiMemory)
+      aiSettings: sanitizeAiSettings(src.aiSettings),
+      aiMemory: sanitizeAiMemory(src.aiMemory),
+      // Page edits are validated by shared/page-edits.js; without it (a bare unit test) they are kept as they are.
+      pageEdits: RW.sanitizePageEdits ? RW.sanitizePageEdits(src.pageEdits) : (isObj(src.pageEdits) ? clone(src.pageEdits) : {})
+    };
+  }
+
+  // autoOptimise: the AI may act by itself. pageEdits: "describe a change" may edit pages, not only
+  // settings. pageFixes: proactive page fixes are off, suggested in the popup, or applied by themselves.
+  function sanitizeAiSettings(raw) {
+    const src = isObj(raw) ? raw : {};
+    return {
+      autoOptimise: src.autoOptimise === true,
+      pageEdits: src.pageEdits !== false,
+      pageFixes: PAGE_FIX_MODES.includes(src.pageFixes) ? src.pageFixes : 'suggest'
     };
   }
 
@@ -315,8 +340,12 @@
       domainSliderOverrides: profile ? clone(profile.domainSliderOverrides) : {},
       customCosmeticSelectors: profile ? profile.customCosmeticSelectors.slice() : [],
       newsletterPrompts: profile && profile.newsletterPrompts ? profile.newsletterPrompts : 'auto',
+      cookieBannerAi: profile && profile.cookieBannerAi ? profile.cookieBannerAi : 'auto',
+      pageFixesSite: profile && profile.pageFixes ? profile.pageFixes : 'auto',
       operatingMode: s.operatingMode || 'full',
-      aiPreference: !!(s.aiSettings && s.aiSettings.autoOptimise)
+      aiPreference: !!(s.aiSettings && s.aiSettings.autoOptimise),
+      aiPageEdits: !(s.aiSettings && s.aiSettings.pageEdits === false),
+      pageFixMode: (s.aiSettings && PAGE_FIX_MODES.includes(s.aiSettings.pageFixes)) ? s.aiSettings.pageFixes : 'suggest'
     });
   }
 
@@ -335,14 +364,27 @@
     let newsletter = 'off';
     if (active && cfg.newsletterPrompts === 'hide') newsletter = 'hide';
     else if (hidingAllowed && cfg.newsletterPrompts === 'auto' && cfg.aiPreference && !light && !incognito) newsletter = 'ai';
+    // Unknown cookie banners: full consent work only, never in Light or Incognito, only when your
+    // categories refuse something, and never on a site where you said no.
+    const intent = consentIntent(cfg);
+    const refuses = !!intent && intent.decision !== 'accept';
+    const consentAi = RW.AI_CONSENT_ENABLED === true && consent === 'full' && !!cfg.aiPreference && !incognito &&
+      refuses && cfg.cookieBannerAi !== 'off';
     let aiPausedReason = null;
     if (cfg && cfg.aiPreference) aiPausedReason = light ? 'light' : incognito ? 'incognito' : null;
+    // Proactive page fixes: rules find candidates; 'auto' applies the sure ones, and asks the model about
+    // the rest only when automatic optimisation is on. Never in Light, Incognito, or where you said no.
+    let pageFixes = 'off';
+    if (active && !light && !incognito && cfg.pageFixesSite !== 'off' && PAGE_FIX_MODES.includes(cfg.pageFixMode)) pageFixes = cfg.pageFixMode;
     return {
+      pageFixes,
+      pageFixAi: pageFixes === 'auto' && !!cfg.aiPreference,
       consent,
       learning: active && !light && !incognito && cfg.trackerHeuristicMode !== 'off',
       headerObservation: !light,
       newsletter,
       ai: newsletter === 'ai',
+      consentAi,
       aiPausedReason
     };
   }
@@ -350,7 +392,7 @@
   // Short hash of the settings an automatic decision depends on. A change invalidates remembered decisions.
   function settingsEpoch(cfg) {
     const basis = JSON.stringify([cfg.tier, cfg.cosmeticFiltering, cfg.aggressiveFiltering, cfg.newsletterPrompts,
-      cfg.operatingMode, cfg.aiPreference, cfg.consentMode, cfg.consentCategories]);
+      cfg.operatingMode, cfg.aiPreference, cfg.consentMode, cfg.consentCategories, cfg.cookieBannerAi || 'auto']);
     let h = 0x811c9dc5;
     for (let i = 0; i < basis.length; i++) { h ^= basis.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
     return h.toString(16).padStart(8, '0');
@@ -534,6 +576,11 @@
     }, now);
   }
 
+  function setSiteCookieBannerAi(state, siteKey, value, now) {
+    if (!COOKIE_AI_CHOICES.includes(value)) throw new Error('invalid_value');
+    return withProfile(state, siteKey, (p) => { p.cookieBannerAi = value; return p; }, now);
+  }
+
   function setSiteNewsletter(state, siteKey, value, now) {
     if (!NEWSLETTER_CHOICES.includes(value)) throw new Error('invalid_value');
     return withProfile(state, siteKey, (p) => { p.newsletterPrompts = value; return p; }, now);
@@ -556,11 +603,78 @@
   }
 
   function setAiAutoOptimise(state, enabled) {
-    return Object.assign({}, state, { aiSettings: { autoOptimise: enabled === true } });
+    return Object.assign({}, state, { aiSettings: Object.assign(sanitizeAiSettings(state.aiSettings), { autoOptimise: enabled === true }) });
+  }
+
+  function setAiPageSettings(state, patch) {
+    const next = sanitizeAiSettings(state.aiSettings);
+    if (patch && typeof patch.pageEdits === 'boolean') next.pageEdits = patch.pageEdits;
+    if (patch && patch.pageFixes !== undefined) {
+      if (!PAGE_FIX_MODES.includes(patch.pageFixes)) throw new Error('invalid_value');
+      next.pageFixes = patch.pageFixes;
+    }
+    return Object.assign({}, state, { aiSettings: next });
+  }
+
+  function setSitePageFixes(state, siteKey, value, now) {
+    if (!PAGE_FIX_SITE_CHOICES.includes(value)) throw new Error('invalid_value');
+    return withProfile(state, siteKey, (p) => { p.pageFixes = value; return p; }, now);
+  }
+
+  // ---- page edits (validated by shared/page-edits.js)
+
+  function withPageEdits(state, siteKey, fn) {
+    const key = RW.siteKeyForHost(siteKey);
+    if (!RW.isValidDomain(key)) throw new Error('invalid_site');
+    const all = Object.assign({}, state.pageEdits || {});
+    const next = fn((all[key] || []).map((e) => clone(e)));
+    if (next.length) all[key] = next; else delete all[key];
+    return Object.assign({}, state, { pageEdits: RW.sanitizePageEdits(all) });
+  }
+
+  // Adds or replaces an edit by id. At the limit, the oldest automatic fix makes room first, then the oldest edit.
+  function savePageEdit(state, siteKey, edit) {
+    const e = RW.sanitizePageEdit(edit);
+    if (!e) throw new Error('invalid_edit');
+    return withPageEdits(state, siteKey, (list) => {
+      const i = list.findIndex((x) => x.id === e.id);
+      if (i >= 0) { list[i] = e; return list; }
+      if (list.length >= RW.PAGE_EDITS_MAX_PER_SITE) {
+        const auto = list.findIndex((x) => x.source === 'automatic');
+        list.splice(auto >= 0 ? auto : 0, 1);
+      }
+      list.push(e);
+      return list;
+    });
+  }
+
+  function setPageEditEnabled(state, siteKey, id, enabled) {
+    return withPageEdits(state, siteKey, (list) => {
+      const e = list.find((x) => x.id === id);
+      if (!e) throw new Error('unknown_edit');
+      e.enabled = enabled === true;
+      return list;
+    });
+  }
+
+  function deletePageEdit(state, siteKey, id) {
+    return withPageEdits(state, siteKey, (list) => list.filter((x) => x.id !== id));
+  }
+
+  function pageEditsFor(state, siteKey) {
+    const key = RW.siteKeyForHost(siteKey || '');
+    return (state.pageEdits && state.pageEdits[key]) || [];
   }
 
   function aiSite(map, siteKey) {
     return (map && map[siteKey]) || {};
+  }
+
+  // The whole remembered entry (action and, for cookie banners, the label clicked).
+  function recallAiEntry(state, siteKey, key, epoch, now) {
+    const e = aiSite(state.aiMemory.decisions, siteKey)[key];
+    if (!e || e.epoch !== epoch || finiteOr(now, Date.now()) - e.at > AI_DECISION_TTL) return null;
+    return Object.assign({}, e);
   }
 
   function recallAiDecision(state, siteKey, key, epoch, now) {
@@ -584,11 +698,19 @@
     return Object.assign({}, state, { aiMemory: sanitizeAiMemory(mem, now) });
   }
 
-  function rememberAiDecision(state, siteKey, key, action, epoch, now) {
+  function rememberAiDecision(state, siteKey, key, action, epoch, now, label) {
     return withAiMemory(state, 'decisions', siteKey, (site) => {
       delete site[key];
-      site[key] = { action, at: finiteOr(now, Date.now()), epoch };
+      site[key] = Object.assign({ action, at: finiteOr(now, Date.now()), epoch }, label ? { label } : {});
     }, now);
+  }
+
+  function forgetAiDecision(state, siteKey, key, now) {
+    return withAiMemory(state, 'decisions', siteKey, (site) => { delete site[key]; }, now);
+  }
+
+  function clearAiUndone(state, siteKey, signature, now) {
+    return withAiMemory(state, 'undone', siteKey, (site) => { delete site[signature]; }, now);
   }
 
   function markAiUndone(state, siteKey, signature, now) {
@@ -640,6 +762,7 @@
     TIERS,
     OPERATING_MODES,
     NEWSLETTER_CHOICES,
+    COOKIE_AI_CHOICES,
     AI_DECISION_TTL,
     AI_UNDO_TTL,
     CONSENT_MODES,
@@ -670,10 +793,22 @@
     settingsEpoch,
     sanitizeAiMemory,
     setSiteNewsletter,
+    setSiteCookieBannerAi,
     restoreSiteProfile,
     setOperatingMode,
     setAiAutoOptimise,
+    setAiPageSettings,
+    setSitePageFixes,
+    sanitizeAiSettings,
+    savePageEdit,
+    setPageEditEnabled,
+    deletePageEdit,
+    pageEditsFor,
+    PAGE_FIX_MODES,
     recallAiDecision,
+    recallAiEntry,
+    forgetAiDecision,
+    clearAiUndone,
     rememberAiDecision,
     isAiUndone,
     markAiUndone,

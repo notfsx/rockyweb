@@ -80,7 +80,7 @@ try {
   for (const [d, n] of [['adnetwork-sync.com', 9], ['pixel-tracker.net', 7], ['audience-graph.io', 5], ['cdn-metrics.com', 4], ['social-share.example', 2]]) {
     learned[d] = { firstPartyHosts: Array.from({ length: n }, (_, i) => `site${i}.example`), learnedStatus: n >= 3 ? 'cookie_block' : 'allow', globalManualOverride: null, firstSeen: now, lastSeen: now };
   }
-  await ext.evaluate((data) => chrome.runtime.sendMessage({ action: 'importSettings', payload: { data } }), JSON.stringify({
+  const seed = {
     globalDefaultTier: 'balanced',
     // The optional confirmation note (off for new installs) makes the answered popup visible.
     globalCustomConfig: { showToastBadge: true },
@@ -91,7 +91,9 @@ try {
     },
     learnedTrackers: learned,
     stats: { totalPopupsHandled: 214, totalAdsBlocked: 5182, totalTrackersRestricted: 18940 }
-  }));
+  };
+  const importSeed = (data) => ext.evaluate((d) => chrome.runtime.sendMessage({ action: 'importSettings', payload: { data: d } }), JSON.stringify(data));
+  await importSeed(seed);
 
   // Real UI captures (2x).
   const web = await context.newPage();
@@ -135,6 +137,28 @@ try {
   await web.mouse.move(ad.x + 40, ad.y + 30, { steps: 4 });
   await sleep(300);
   const pickerShot = await web.screenshot();
+  await web.keyboard.press('Escape');
+
+  // Saved page changes for the demo site: the page restyled, and the popup list that undoes them.
+  await importSeed({ ...seed, pageEdits: { 'thedailybark.test': [
+    { id: 'shot0001', label: 'bigger text in sepia', request: 'make the text bigger and easier on the eyes', source: 'described', ops: [{ op: 'text_size', selector: 'page', value: 115 }, { op: 'colours', selector: 'page', value: 'sepia' }], settings: [], enabled: true, createdAt: now },
+    { id: 'shot0002', label: 'hide the sidebar', request: 'hide the sidebar', source: 'described', ops: [{ op: 'hide', selector: 'aside.side' }], settings: [], enabled: true, createdAt: now },
+    { id: 'shot0003', label: 'stop the header following the page', source: 'automatic', fix: 'tall_sticky_header', ops: [{ op: 'unstick', selector: 'header' }], settings: [], enabled: false, createdAt: now }
+  ] } });
+  await web.reload({ waitUntil: 'load' });
+  await sleep(4500);
+  const editedShot = await web.screenshot();
+  const popupChanges = await (async () => {
+    const p = await context.newPage();
+    await p.setViewportSize({ width: 340, height: 420 });
+    await p.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}`);
+    await sleep(700);
+    await p.locator('section.changes .adj-toggle').click();
+    await sleep(300);
+    const buf = await p.screenshot({ fullPage: true });
+    await p.close();
+    return buf;
+  })();
 
   // ---- composition
   const font = (w) => `@font-face { font-family: L; font-weight: ${w}; src: url(data:font/woff2;base64,${b64(path.join(EXT_DIR, 'ui', 'fonts', `lexend-deca-${w}.woff2`))}); }`;
@@ -188,6 +212,13 @@ try {
     <div style="padding:56px 72px 0"><div class="h" style="font-size:36px">Trackers <em>learned</em>, not just listed</div>
     <div class="s" style="font-size:17px;margin-top:8px">Anything that follows you across 3 sites loses its cookies. Everything stays on your device.</div></div>
     <img class="ui" src="${img(optTrackers)}" style="position:absolute;left:90px;top:210px;width:1100px">`);
+
+  await compose(path.join(SHOTS, '6-page-changes.png'), 1280, 800, `
+    <img src="${img(editedShot)}" style="position:absolute;inset:0;width:1280px;height:800px">
+    <img class="ui" src="${img(popupChanges)}" style="position:absolute;top:20px;right:28px;width:340px">
+    <div style="position:absolute;left:64px;bottom:56px;padding:22px 28px;border-radius:16px;background:rgb(31,25,20);max-width:600px">
+      <div class="h" style="font-size:34px">Describe a change. <em>It stays, and it undoes.</em></div>
+      <div class="s" style="font-size:16px;margin-top:8px">Bigger text, calmer colours, no sidebar. Saved for the site, listed with a switch, never asked twice.</div></div>`);
 
   await compose(path.join(OUT, 'promo-small-440x280.png'), 440, 280, `
     <div style="display:flex;height:100%;align-items:center;gap:22px;padding:0 30px">

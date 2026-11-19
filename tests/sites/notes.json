@@ -1,0 +1,40 @@
+{
+  "sites": {
+    "bbc": "US visitors get an accept-only notice; correctly left alone",
+    "mirror": "US visitors get an accept-only notice; correctly left alone",
+    "guardian": "US privacy notice, not a consent banner; correctly left alone",
+    "corriere": "pay or consent wall; correctly left alone",
+    "20minutes": "pay or consent wall; correctly left alone",
+    "bild": "pay or consent wall; correctly left alone",
+    "spiegel": "pay or consent wall; correctly left alone",
+    "independent": "donation overlay, not consent; correctly left alone",
+    "usercentrics": "opt-out toast; correctly left alone",
+    "booking": "dialog left is the Genius sign-in prompt (also in the baseline). The full-reject 'mismatch' was group C0001, OneTrust's always-on necessary group; reader fixed, re-checked 2026-11-19: matches",
+    "nos": "information notice, not consent; correctly left alone",
+    "wikipedia": "no banner",
+    "trustarc": "no banner shown to this visitor",
+    "skynews": "blocked the automated browser (access denied)",
+    "argos": "blocked the automated browser (access denied)",
+    "easyjet": "blocked the automated browser (verification page)",
+    "zeit": "blocked the automated browser (verification page)",
+    "forbes": "blocked the automated browser (verification page)",
+    "mands": "its console error also appears without the extension",
+    "marca": "pay or consent: Didomi's refusal is taken, Marca's own subscribe notice stays; not circumvented",
+    "thesun": "anti-adblock notice; reported, not circumvented",
+    "lefigaro": "banner drawn in an address-less iframe (AppConsent), now answered; the scroll result is a reader artefact",
+    "ryanair": "settings layer is an iframe Rockyweb cannot reach; since 2026-11-19 the banner is refused directly instead (re-checked: answered, page scrolls)",
+    "zalando": "Light: 'Set preferences' opened a layer that could not be finished; since 2026-11-19 refused directly (re-checked: answered, page scrolls)",
+    "lufthansa": "an earlier 'mismatch' was a reader artefact (group names not loaded yet); reader fixed"
+  },
+  "findings": [
+    "Zero accept clicks and zero navigations caused by Rockyweb in every configuration.",
+    "The one MISMATCH under Full, reject all (Booking) is a reader artefact: the group read as functional is C0001, OneTrust's always-on necessary group. With the reader fixed, a re-check on 2026-11-19 reads it as matching. Counting it, true mismatches are 0 in every configuration.",
+    "The Ryanair (Full, granular) and Zalando (Light) breakage in the table was fixed after this run; a re-check on 2026-11-19 (one visit each) shows both answered with a refusal and the page scrolling. The Le Figaro text figure is a reader artefact and Forbes blocked the browser, which leaves The Sun's anti-adblock notice as the only real breakage.",
+    "Run from the United States, so many EU sites showed US variants (accept-only notices, privacy notices, no banner). UK and EU visitors will see more banners, and these numbers are not a substitute for a run from Europe.",
+    "Pay or consent walls (Marca, Corriere, 20 Minutes, Bild, Spiegel) are left alone: refusing is a choice the user makes on the site, and Rockyweb never accepts on their behalf.",
+    "Anti-adblock notices (The Sun) are reported, not circumvented.",
+    "Settings routes are now tried only where the toggles are known to be reachable (a rule that names them, or a preference panel already in the page). Elsewhere a direct refusal is used, which is stricter than asked but never leaves a dialog open (Ryanair, Zalando).",
+    "Real Gemini Nano corpus (AI off against AI on): 38 of 46 identical; the 8 differences came from consent kept in partitioned third-party storage between runs. The banner AI clicked on no real site (0 attempts) and made 0 accepts.",
+    "Measured on 2026-11-15 to 2026-11-19. Blocked sites (Sky News, Argos, easyJet, Zeit, Forbes) refused the automated browser and are not evidence either way."
+  ]
+}

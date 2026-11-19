@@ -20,6 +20,11 @@ self.rockywebCmpMainWorld = function rockywebCmpMainWorld(intent) {
     if (FUNCTIONAL_RE.test(t)) return 'functional';
     return 'unknown';
   }
+  // The name decides; descriptions often say "necessary" in groups that are not.
+  const classifyNamed = (name, description) => {
+    const c = classify(name);
+    return c !== 'unknown' ? c : classify(description);
+  };
   const wants = (category) => category === 'necessary' || (category !== 'unknown' && !!cats[category]);
   const baseDecision = allOff ? 'reject' : allOn ? 'accept' : 'custom';
   const decisionLabel = (downgraded) => (downgraded ? 'reject' : baseDecision);
@@ -41,7 +46,7 @@ self.rockywebCmpMainWorld = function rockywebCmpMainWorld(intent) {
         for (const g of groups) {
           const id = g && (g.CustomGroupId || g.OptanonGroupId);
           if (!id || id === 'C0001') continue;
-          const cat = classify(`${g.GroupName || ''} ${g.GroupDescription || ''}`);
+          const cat = classifyNamed(g.GroupName, g.GroupDescription);
           if (cat !== 'necessary' && cat !== 'unknown' && cats[cat]) {
             try { w.OneTrust.UpdateConsent('Category', `${id}:1`); granted++; } catch (_) { /* keep rejected */ }
           }
@@ -85,7 +90,7 @@ self.rockywebCmpMainWorld = function rockywebCmpMainWorld(intent) {
           await w.UC_UI.denyAllConsents();
           if (!allOff && typeof w.UC_UI.getServicesBaseInfo === 'function' && typeof w.UC_UI.acceptServices === 'function') {
             const services = (await w.UC_UI.getServicesBaseInfo()) || [];
-            const ids = services.filter((s) => s && s.id && wants(classify(`${s.categorySlug || ''} ${s.name || ''}`)) && classify(s.categorySlug || '') !== 'necessary').map((s) => s.id);
+            const ids = services.filter((s) => s && s.id && wants(classifyNamed(s.categorySlug, s.name)) && classify(s.categorySlug || '') !== 'necessary').map((s) => s.id);
             if (ids.length) await w.UC_UI.acceptServices(ids);
           }
         }
@@ -115,7 +120,7 @@ self.rockywebCmpMainWorld = function rockywebCmpMainWorld(intent) {
         let granted = 0;
         for (const s of services) {
           if (!s || !s.name || s.required) continue;
-          const cat = classify(`${(s.purposes || []).join(' ')} ${s.name}`);
+          const cat = classifyNamed((s.purposes || []).join(' '), s.name);
           const on = cat !== 'unknown' && wants(cat);
           if (on) granted++;
           m.updateConsent(s.name, on);

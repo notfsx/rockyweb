@@ -35,6 +35,8 @@
     const COLD_BACKOFF = o.coldBackoff || 60000;
     const now = o.now || (() => Date.now());
     const systemPrompt = o.systemPrompt || RW.AI_SYSTEM_PROMPT;
+    // availability() and create() always use the same options, including the input languages.
+    const modelOptions = o.modelOptions || RW.AI_MODEL_OPTIONS;
 
     let base = null;
     let basePromise = null;
@@ -50,7 +52,7 @@
       const LM = getLM();
       if (!LM || typeof LM.availability !== 'function') return 'absent';
       try {
-        const a = await withTimeout(LM.availability(RW.AI_MODEL_OPTIONS), 5000);
+        const a = await withTimeout(LM.availability(modelOptions), 5000);
         return ['unavailable', 'downloadable', 'downloading', 'available'].includes(a) ? a : 'unavailable';
       } catch (_) {
         return 'error';
@@ -78,7 +80,7 @@
       if (base) return Promise.resolve(base);
       if (!basePromise) {
         basePromise = (async () => {
-          const created = getLM().create(Object.assign({}, RW.AI_MODEL_OPTIONS, {
+          const created = getLM().create(Object.assign({}, modelOptions, {
             initialPrompts: [{ role: 'system', content: systemPrompt }],
             signal
           }));

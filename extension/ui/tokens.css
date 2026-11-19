@@ -10,7 +10,7 @@
   --sub-alt-2: #33291f;
   --main: #e0975a;        /* ginger (curly ears) */
   --sub: #c4ad96;         /* sandy coat */
-  --sub-dim: rgba(196, 173, 150, 0.55);
+  --sub-dim: rgba(196, 173, 150, 0.78); /* 4.5:1 or better on every panel */
   --text: #f3e9dc;        /* cream fur */
   --error: #f1cc80;       /* honey */
   --line: rgba(196, 173, 150, 0.12);

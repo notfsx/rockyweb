@@ -45,6 +45,7 @@
         "shared/constants.js",
         "shared/domain.js",
         "shared/ai-policy.js",
+        "shared/page-edits.js",
         "engines/consent-rules.js",
         "content.js"
       ],

@@ -4,7 +4,7 @@
 
   const RW = window.RockyShared;
   const A = RW.ACTIONS;
-  const { h, send, seg, onOff, toggle, fmt, timeAgo, errorText } = RW.UI;
+  const { h, send, seg, onOff, toggle, fmt, timeAgo, errorText, keepFocus } = RW.UI;
   const $ = (id) => document.getElementById(id);
 
   const PAGES = ['protection', 'cookies', 'custom', 'websites', 'trackers', 'hidden', 'data'];
@@ -34,7 +34,7 @@
       const r = await send(A.GET_OPTIONS_STATE);
       S = r.state;
       diag = r.diagnostics;
-      renderAll();
+      keepFocus(renderAll);
     } catch (err) {
       toast(errorText(err), true);
     }
@@ -64,7 +64,7 @@
   }
 
   const setting = (title, desc, control) => h('div', { class: 'setting' },
-    h('div', { class: 'setting-text' }, h('h3', { text: title }), desc ? h('p', { text: desc }) : null),
+    h('div', { class: 'setting-text' }, h('h2', { text: title }), desc ? h('p', { text: desc }) : null),
     h('div', { class: 'setting-ctl' }, control));
 
   // ---------------------------------------------------------------- routing
@@ -349,12 +349,52 @@
       return;
     }
     wrap.replaceChildren(...sites.map(([site, p]) => h('div', { class: 'group' },
-      h('div', { class: 'group-head' }, h('h3', { text: site }), h('span', { text: `${p.customCosmeticSelectors.length} hidden` })),
+      h('div', { class: 'group-head' }, h('h2', { text: site }), h('span', { text: `${p.customCosmeticSelectors.length} hidden` })),
       p.customCosmeticSelectors.map((sel) => h('div', { class: 'sel' },
         h('code', { title: sel, text: sel }),
         h('button', {
           class: 'textbtn', type: 'button', text: 'show again', 'aria-label': `Show ${sel} on ${site} again`,
           onclick: () => act(A.REMOVE_COSMETIC_SELECTOR, { siteKey: site, selector: sel }, 'Shows again after a reload')
+        }))))));
+  }
+
+  const FIX_MODE_TEXT = {
+    off: 'Off: Rockyweb only changes pages when you ask.',
+    suggest: 'Rockyweb notices things like a bar asking you to install an app, a video player floating over the text or a page that will not scroll, and suggests a fix in the toolbar. Nothing changes until you apply it.',
+    auto: 'Rockyweb applies the obvious fixes itself, and with automatic optimisation on asks the on-device AI about the less obvious ones. Each one is listed in the toolbar and can be switched off. Never on cookie notices, sign-in, payment, paywalls or anti-adblock messages.'
+  };
+
+  function renderPageAi() {
+    const st = S.aiSettings || {};
+    $('pageEditsToggle').replaceChildren(toggle(st.pageEdits !== false,
+      (v) => act(A.SET_AI_PAGE_SETTINGS, { pageEdits: v }, v ? 'Described changes can edit pages' : 'Described changes only change settings'),
+      'Let AI change pages, not only settings'));
+    const mode = st.pageFixes || 'suggest';
+    $('pageFixesButtons').replaceChildren(seg(
+      [{ value: 'off', label: 'off' }, { value: 'suggest', label: 'suggest' }, { value: 'auto', label: 'automatic' }],
+      mode, (v) => act(A.SET_AI_PAGE_SETTINGS, { pageFixes: v }, `page fixes: ${v === 'auto' ? 'automatic' : v}`), 'Page fixes', false, 'btns'));
+    $('pageFixesDescription').textContent = FIX_MODE_TEXT[mode];
+  }
+
+  const EDIT_SOURCE = { described: 'you asked', suggested: 'suggested, you applied it', automatic: 'applied automatically' };
+
+  function renderEdits() {
+    const wrap = $('editList');
+    const sites = Object.entries(S.pageEdits || {}).sort((a, b) => a[0].localeCompare(b[0]));
+    if (!sites.length) {
+      wrap.replaceChildren(h('div', { class: 'empty', text: 'No described changes or page fixes yet.' }));
+      return;
+    }
+    wrap.replaceChildren(...sites.map(([site, list]) => h('div', { class: 'group' },
+      h('div', { class: 'group-head' }, h('h2', { text: site }), h('span', { text: `${list.filter((e) => e.enabled).length} of ${list.length} on` })),
+      list.map((e) => h('div', { class: `sel edit${e.enabled ? '' : ' off'}` },
+        h('div', { class: 'edit-text' },
+          h('div', { text: e.label }),
+          h('div', { class: 'meta', text: e.request ? `${EDIT_SOURCE[e.source]}: “${e.request}”` : EDIT_SOURCE[e.source] })),
+        toggle(e.enabled, (v) => act(A.SET_PAGE_EDIT, { siteKey: site, id: e.id, enabled: v }), `${e.label} on ${site}: on or off`),
+        h('button', {
+          class: 'textbtn', type: 'button', text: 'delete', 'aria-label': `Delete ${e.label} on ${site}`,
+          onclick: () => act(A.DELETE_PAGE_EDIT, { siteKey: site, id: e.id }, 'Change deleted')
         }))))));
   }
 
@@ -389,6 +429,8 @@
     renderWebsites();
     renderTrackers();
     renderHidden();
+    renderEdits();
+    renderPageAi();
     renderData();
   }
 

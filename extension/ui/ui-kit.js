@@ -114,11 +114,13 @@
       });
       return b;
     });
+    // Radio group keys: arrows move and select, Home and End jump to the ends.
+    const STEP = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
     wrap.addEventListener('keydown', (e) => {
-      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
       const i = buttons.indexOf(document.activeElement);
-      if (i < 0) return;
-      const j = (i + (e.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length;
+      if (i < 0 || !(e.key in STEP || e.key === 'Home' || e.key === 'End')) return;
+      const n = buttons.length;
+      const j = e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : (i + STEP[e.key] + n) % n;
       buttons[j].focus();
       buttons[j].click();
       e.preventDefault();
@@ -180,5 +182,28 @@
   };
   const errorText = (err) => ERROR_TEXT[err && err.message] || (err && err.message) || 'Something went wrong.';
 
-  RW.UI = { ICONS, icon, h, send, toggle, seg, onOff, tri, fmt, timeAgo, errorText, TRI_LABELS };
+  // Rebuilding controls drops keyboard focus to the page; put it back on the same control, or on
+  // the chosen option of the same radio group.
+  function keepFocus(rebuild) {
+    const el = document.activeElement;
+    const group = el && el.closest && el.closest('[role="radiogroup"]');
+    const want = el && el !== document.body ? {
+      group: group && group.getAttribute('aria-label'),
+      id: el.id,
+      label: el.getAttribute('aria-label') || el.textContent,
+      tag: el.tagName
+    } : null;
+    rebuild();
+    if (!want || (document.activeElement && document.activeElement !== document.body)) return;
+    let next = null;
+    if (want.group) {
+      const g = [...document.querySelectorAll('[role="radiogroup"]')].find((x) => x.getAttribute('aria-label') === want.group);
+      next = g && (g.querySelector('[aria-checked="true"]') || g.querySelector('[tabindex="0"]'));
+    }
+    if (!next && want.id) next = document.getElementById(want.id);
+    if (!next) next = [...document.querySelectorAll(want.tag)].find((x) => (x.getAttribute('aria-label') || x.textContent) === want.label);
+    if (next) next.focus();
+  }
+
+  RW.UI = { ICONS, icon, h, send, toggle, seg, onOff, tri, fmt, timeAgo, errorText, TRI_LABELS, keepFocus };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

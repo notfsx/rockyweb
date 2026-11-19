@@ -323,6 +323,9 @@
     /^only allow (essential|necessary|required) cookies$/,
     /^decline optional cookies$/,
     /^continue without (accepting|agreeing|consent|consenting)$/,
+    /^(reject|decline|refuse|deny) (analytics|marketing|advertising|tracking|statistics|performance)( cookies)?$/,
+    /^no,? thanks( you)?$/,
+    /^no,? i (do not|don't) (accept|agree|consent)$/,
     /^(alle |optionale )?(cookies )?ablehnen( und schließen)?$/,
     /^nur (technisch )?(notwendige|erforderliche|essenzielle|essentielle)( cookies)?( (akzeptieren|zulassen|verwenden|erlauben))?$/,
     /^(alles |tout )?refuser( tout| tous les cookies| les cookies| et fermer)?$/,
@@ -348,7 +351,7 @@
 
   const ACCEPT_PATTERNS = [
     /^(accept|allow|agree)( all| all cookies| cookies| and close| & close| and continue| to all)?$/,
-    /^i (accept|agree)$/,
+    /^(yes,? )?i (accept|agree)$/,
     /^(ok|okay|got it|i understand|understood)$/,
     /^(alle )?(akzeptieren|zustimmen|annehmen|erlauben)$/,
     /^alle cookies (akzeptieren|zulassen|erlauben)$/,
