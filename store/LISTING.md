@@ -94,13 +94,13 @@ Rockyweb protects privacy while browsing: it answers cookie consent popups with 
 ## 5. Notes for the reviewer (optional field)
 
 ```
-No login needed. To test: open any news site with a cookie banner; Rockyweb answers it quietly; the toolbar badge and popup show what it did (an on-page confirmation can be turned on in settings). Click the toolbar icon for the per-site switch and modes; the gear icon shows advanced controls and "hide an element". "Describe a change" and page fixes need Chrome's built-in AI and only change how a page looks; each change is listed under "changes on this site" with a switch and a delete button. Settings live on the options page.
+No login needed. A welcome tab opens once after install; it only offers Chrome's on-device AI download when the device supports it, and nothing downloads without a click. To test: open any news site with a cookie banner; Rockyweb answers it quietly; the toolbar badge and popup show what it did (an on-page confirmation can be turned on in settings). Click the toolbar icon for the per-site switch and modes; the gear icon shows advanced controls and "hide an element". "Describe a change" and page fixes need Chrome's built-in AI and only change how a page looks; each change is listed under "changes on this site" with a switch and a delete button. Settings live on the options page.
 ```
 
 ## 6. Before you submit
 
 - [x] `npm run check` and `npm run test:e2e` pass (2026-11-19, for 1.1.0)
-- [x] `npm run test:nano` passes on a machine with Chrome's on-device AI (real model, all Rockyweb pages closed; 2026-11-15, see `tests/nano/results.md`)
+- [x] `npm run test:nano` passes on a machine with Chrome's on-device AI (real model, all Rockyweb pages closed; 2026-11-19, see `tests/nano/results.md`)
 - [ ] Version in `extension/manifest.json` bumped for every new upload
 - [ ] Privacy policy published and linked
 - [ ] Developer account has a verified contact email

@@ -127,23 +127,6 @@
     }
   }
 
-  function svgIcon(paths, stroke) {
-    const NS = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', stroke);
-    svg.setAttribute('stroke-width', '2');
-    svg.setAttribute('stroke-linecap', 'round');
-    svg.setAttribute('stroke-linejoin', 'round');
-    for (const d of paths) {
-      const p = document.createElementNS(NS, 'path');
-      p.setAttribute('d', d);
-      svg.appendChild(p);
-    }
-    return svg;
-  }
-
   const FONT = '"Lexend Deca", ui-rounded, system-ui, -apple-system, "Segoe UI", sans-serif';
 
   // Most recent real user gesture. Dialogues that appear right after one were opened by the user.
@@ -156,27 +139,26 @@
 
   // ---------------------------------------------------------------- toast
 
+  // One quiet line in the corner, in the popup's style: the wordmark, what happened, and where.
   const Toast = (() => {
     let host = null;
     let timer = 0;
     const STYLE = `
       :host { all: initial; }
-      .t { position: fixed; right: 16px; bottom: 16px; z-index: 2147483647; display: flex; gap: 10px;
-        align-items: center; max-width: 340px; padding: 10px 14px 10px 10px; border-radius: 12px;
-        background: rgba(31,25,20,.97); color: #F3E9DC; border: 1px solid rgba(196,173,150,.16);
-        box-shadow: 0 10px 30px rgba(0,0,0,.35); font: 400 12.5px/1.35 ${FONT};
-        pointer-events: none; animation: in .28s cubic-bezier(.2,.8,.2,1) both; }
-      .t.out { animation: out .25s ease forwards; }
-      .i { flex: none; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: #E0975A; }
-      .i svg { width: 15px; height: 15px; }
-      .ti { font-weight: 500; }
-      .d { color: rgba(196,173,150,.85); margin-top: 1px; }
-      @keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-      @keyframes out { to { opacity: 0; transform: translateY(6px); } }
+      .t { position: fixed; right: 16px; bottom: 16px; z-index: 2147483647; display: flex; align-items: baseline; gap: 10px;
+        max-width: min(380px, calc(100vw - 32px)); padding: 9px 14px; border-radius: 10px;
+        background: #17120E; color: #F3E9DC; border: 1px solid rgba(196,173,150,.12);
+        box-shadow: 0 6px 20px rgba(0,0,0,.28); font: 400 12.5px/1.35 ${FONT}; letter-spacing: -0.005em;
+        pointer-events: none; animation: in .2s cubic-bezier(.2,.8,.2,1) both; }
+      .t.out { animation: out .2s ease forwards; }
+      .w { flex: none; color: #E0975A; font-weight: 500; letter-spacing: -0.01em; }
+      .d { color: rgba(196,173,150,.78); }
+      @keyframes in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+      @keyframes out { to { opacity: 0; } }
       @media (prefers-reduced-motion: reduce) { .t, .t.out { animation: none; } }
     `;
 
-    function show(title, detail) {
+    function show(what, detail) {
       if (!IS_TOP || !document.documentElement) return;
       try {
         if (host) host.remove();
@@ -188,23 +170,23 @@
         const box = document.createElement('div');
         box.className = 't';
         box.setAttribute('role', 'status');
-        const icon = document.createElement('div');
-        icon.className = 'i';
-        icon.appendChild(svgIcon(['M12 3l7 3v5c0 4.6-3 8.5-7 10-4-1.5-7-5.4-7-10V6l7-3z', 'M9 12l2 2 4-4'], '#1F1914'));
-        const text = document.createElement('div');
-        const t1 = document.createElement('div');
-        t1.className = 'ti';
-        t1.textContent = title;
-        const t2 = document.createElement('div');
-        t2.className = 'd';
-        t2.textContent = detail;
-        text.append(t1, t2);
-        box.append(icon, text);
+        const mark = document.createElement('span');
+        mark.className = 'w';
+        mark.textContent = 'rockyweb';
+        const text = document.createElement('span');
+        text.textContent = what;
+        if (detail) {
+          const d = document.createElement('span');
+          d.className = 'd';
+          d.textContent = ` · ${detail}`;
+          text.append(d);
+        }
+        box.append(mark, text);
         shadow.append(style, box);
         document.documentElement.appendChild(host);
         timer = setTimeout(() => {
           box.classList.add('out');
-          setTimeout(() => { if (host) { host.remove(); host = null; } }, 300);
+          setTimeout(() => { if (host) { host.remove(); host = null; } }, 250);
         }, 3200);
       } catch (_) { /* UI must never break the page */ }
     }
@@ -212,11 +194,13 @@
     return { show };
   })();
 
-  function describeDecision(decision, method) {
-    if (method === 'hidden') return 'Notice hidden, no consent given';
-    if (decision === 'accept') return 'Accepted all categories';
-    if (decision === 'custom') return 'Applied your category choices';
-    return 'Rejected non-essential cookies';
+  // What the corner note says after a cookie banner: plain words, and the platform only when it is a named one.
+  function consentNote(info) {
+    const what = info.method === 'hidden' ? 'cookie notice hidden, nothing agreed'
+      : info.decision === 'accept' ? 'cookies accepted, as you set'
+        : info.decision === 'custom' ? 'your cookie choices applied'
+          : 'cookies refused';
+    Toast.show(what, info.cmp && info.cmp !== 'Generic' ? info.cmp : '');
   }
 
   // ---------------------------------------------------------------- scroll-lock healing
@@ -587,7 +571,7 @@
       handled = true;
       stop();
       sendReport(A.CONSENT_HANDLED, { cmp: info.cmp, method: info.method, decision: info.decision });
-      if (IS_TOP && config && config.showToastBadge) Toast.show('Cookie popup handled', `${describeDecision(info.decision, info.method)} · ${info.cmp}`);
+      if (IS_TOP && config && config.showToastBadge) consentNote(info);
       setTimeout(() => {
         for (const t of hideTargets()) if (isVisible(t)) forceHide(t);
         Scroll.healSoon(scrollClasses);
@@ -858,7 +842,7 @@
           Scroll.healSoon(rule ? rule.scrollClasses : []);
         }, 900);
       }
-      if (info.showToast) Toast.show('Cookie popup handled', `${describeDecision(info.decision, info.method)} · ${info.cmp}`);
+      if (info.showToast) consentNote(info);
     }
 
     // Still looking for or answering a cookie banner on this page.
@@ -1435,7 +1419,7 @@
       const saved = history.filter((h) => h.saved).length;
       if (history.length) {
         Toast.show(`${history.length} element${history.length === 1 ? '' : 's'} hidden`,
-          saved ? `Saved for ${siteKey || location.hostname}. Manage them in settings.` : 'Hidden until you reload.');
+          saved ? `saved for ${siteKey || location.hostname}` : 'until you reload');
       }
     }
 
@@ -1467,6 +1451,24 @@
     const vw = () => window.innerWidth || 1;
     const vh = () => window.innerHeight || 1;
     const textOf = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+
+    // The element's own size as a share of the screen, wherever it is on the page.
+    function sizePct(el) {
+      const r = el.getBoundingClientRect();
+      return Math.min(100, Math.round((r.width * r.height * 100) / (vw() * vh())));
+    }
+
+    // Words from an element's id and classes that say what it is. Only these words ever reach the
+    // model, so a page cannot write instructions into its class names.
+    const HINTS = ['comments', 'comment', 'newsletter', 'signup', 'subscribe', 'related', 'recommended', 'share', 'social',
+      'promo', 'advert', 'ads', 'ad', 'sponsored', 'sidebar', 'rail', 'author', 'bio', 'tags', 'toc', 'popular', 'trending',
+      'mostread', 'banner', 'chat', 'video', 'player', 'gallery', 'hero', 'menu', 'breadcrumb', 'pagination'];
+    function hintOf(el) {
+      const words = `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`.toLowerCase().split(/[^a-z]+/);
+      const joined = `${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`.toLowerCase().replace(/[^a-z]+/g, '');
+      const hit = HINTS.find((w) => words.includes(w)) || (joined.includes('mostread') ? 'mostread' : '');
+      return hit === 'mostread' ? 'most read' : hit === 'ad' || hit === 'ads' ? 'advert' : hit;
+    }
 
     function areaPct(el) {
       const r = el.getBoundingClientRect();
@@ -1533,6 +1535,8 @@
       else if (tag === 'iframe') what = 'embedded frame';
       else if (role === 'dialog' || tag === 'dialog' || el.getAttribute('aria-modal') === 'true') what = 'dialog';
       else if (tag === 'form') what = 'form';
+      const hint = hintOf(el);
+      if (what === 'section' && hint) what = `${hint} section`;
       return pos.fixed ? `${pos.sticky ? 'sticky' : 'fixed'} ${what === 'section' ? pos.where : `${what}, ${pos.where}`}` : what;
     }
 
@@ -1558,10 +1562,25 @@
         if ((p === 'fixed' || p === 'sticky') && !(el.parentElement && el.parentElement.closest && hasFixedAncestor(el.parentElement))) add(el);
       }
       for (const el of qsAll(document, 'header, nav, footer, aside, [role="banner"], [role="navigation"], [role="complementary"], [role="contentinfo"], dialog[open], [aria-modal="true"], video, iframe')) {
-        if (areaPct(el) >= 2 || el.localName === 'video') add(el);
+        if (sizePct(el) >= 2 || el.localName === 'video') add(el);
+      }
+      // Blocks a reader can name: ones whose id or class says what they are, and headed sections
+      // inside the main content (a newsletter box, the comments), never the main content itself.
+      const mainLen = main ? (main.textContent || '').length : 0;
+      const blockOk = (el) => sizePct(el) >= 1 && !(main && (el === main || el.contains(main))) && (!main || !main.contains(el) || (el.textContent || '').length < mainLen * 0.6);
+      for (let i = 0, n = 0; i < all.length && i < MAX_WALK && n < 12; i++) {
+        const el = all[i];
+        if (!/^(div|section|aside|form|figure|ul|ol)$/.test(el.localName) || !hintOf(el) || found.has(el)) continue;
+        if (el.parentElement && el.parentElement.closest && hintOf(el.parentElement) === hintOf(el)) continue;
+        if (blockOk(el)) { add(el); n++; }
+      }
+      if (main) {
+        for (const el of qsAll(main, ':scope > section, :scope > aside, :scope > form, :scope > div, :scope > * > section, :scope > * > aside, :scope > * > form').slice(0, 40)) {
+          if (!found.has(el) && el.querySelector('h2, h3, h4') && blockOk(el)) add(el);
+        }
       }
       add(main);
-      const nodes = [...found].map((el) => ({ el, pos: positionOf(el), area: areaPct(el) }))
+      const nodes = [...found].map((el) => ({ el, pos: positionOf(el), area: sizePct(el) }))
         .sort((a, b) => (b.pos.fixed - a.pos.fixed) || (b.area - a.area))
         .slice(0, RW.PAGE_OUTLINE_MAX);
       outline = new Map();
@@ -1572,6 +1591,8 @@
         const flags = [];
         if (n.el.querySelector('video') || n.el.localName === 'video') flags.push('video');
         if (n.el.querySelector('form, input')) flags.push('form');
+        if (!n.pos.fixed && n.el.getBoundingClientRect().top > vh()) flags.push('further down');
+        if (n.el !== main && main && main.contains(n.el)) flags.push('inside the main content');
         return {
           id, kind: kindOf(n.el, n.pos, main), area: n.area, text: shortText(n.el), flags,
           main: n.el === main, protected: holdsInput(n.el) || !!n.el.querySelector('input[type="password"]')

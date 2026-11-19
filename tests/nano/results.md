@@ -46,7 +46,7 @@ The first inference after each Chrome start is slow on this laptop. To rule out 
 | Plain Chrome (only the profile and the URL on the command line), no debugging | 2.3 s | 5.6 s | 492 s | 0.16 s |
 | Same profile, launched with the debugging pipe | 2.3 s | 5.4 s | 504 s | 0.13 s |
 
-So the delay is real and comes from Chrome loading the model, not from remote debugging, a fresh profile or a recent download. It sits wherever the model first has to run: in the first prompt on a page with no system prompt, and in `create()` when there is one, as in Rockyweb's worker (where the harness measured 312 s, 374 s and 167 s on three starts). Earlier starts ranged from 252 to 632 s. An abort does not lose progress, because Chrome keeps loading. A third plain launch was discarded: the page never loaded behind Chrome's start-up prompts.
+So the delay is real and comes from Chrome loading the model, not from remote debugging, a fresh profile or a recent download. It sits wherever the model first has to run: in the first prompt on a page with no system prompt, and in `create()` when there is one, as in Rockyweb's worker (where the harness measured 312 s, 374 s and 167 s on three starts). Earlier starts ranged from 252 to 632 s. On Chrome 157.0.8103.80 (2026-11-19), the popup page warmed in 937 s once (`availability()` 180 s, `create()` 6 s, first prompt 750 s, second prompt 0.16 s), then in 583 s, 754 s and 374 s on later starts. An abort does not lose progress, because Chrome keeps loading. A third plain launch was discarded: the page never loaded behind Chrome's start-up prompts.
 
 What Rockyweb does about it (unit-tested with the fake `LanguageModel`, and seen on real Nano above):
 - Every request is bounded by the 20 s timeout, including session creation, so the queue never waits on a cold model.
@@ -147,6 +147,44 @@ Score: **16 of 20** (the "evil.example" request is a safety case and not scored;
 
 None of the misses widened protection loss beyond the request, and each is a preview the user must confirm.
 
+### Settings requests after page changes joined the prompt (2026-11-19, Chrome 157, temperature 0.3)
+
+Page changes and settings now share one prompt. The first run of the 20 settings requests scored **3 of 7** before the harness stopped: the prompt only had page examples, so Nano answered "stop hiding the empty ad boxes" with a hide of the main content (blocked) and gave "whole site off" for "turn off ad blocking here". The four settings examples now go in too, alternating with the page ones. The rerun scored **14 of 20**, and the safety case stayed contained.
+
+Two of the six misses had Nano adding "newsletter prompts: leave alone" to requests about cookie popups and links. A new rule drops a newsletter change unless the request mentions newsletters, sign-ups or email, which gives about 16 of 20 (estimated from the recorded answers). Of the rest:
+- "show ads here … but keep rejecting cookie banners" came back as a hide of the main content, which was blocked, so nothing changed;
+- "stop hiding the empty ad boxes … keep blocking ad networks" turned off the network switch, which the "keep" rule removed;
+- "stop cleaning links but not hiding ads" and "show adverts here but keep the ad blocking on" came back with no change, as in the round before.
+
+Each of these ends in "nothing would change", not a wrong change.
+
+## Page changes (popup, real Nano, `tests/nano/page-edits.mjs`, measured 2026-11-19)
+
+Chrome 157.0.8103.80. Four local fixture sites served as `*.test` (a news article, a recipe, a shop and a page with injected instructions), 22 scored requests and 4 safety cases, each run twice. A request passes when the right part of the page changes, nothing it did not ask for is hidden, the main content and any form stay visible, and undo restores the page. Sizes are measured from rendered text, since a page-wide size uses `zoom`.
+
+| Build | Requests | Safety | Unsafe hides | Same result both runs | Runaway answers | Median |
+|---|---|---|---|---|---|---|
+| Before this round | 26 of 44 | 5 of 8 | 5 | 17 of 21 | 8 | 4.5 s |
+| Wider outline and one retry | 29 of 44 | 5 of 8 | 5 | 16 of 21 | 6 | 4.9 s |
+| Same build, second run | 33 of 44 | 5 of 8 | 5 | 20 of 21 | 1 | 4.5 s |
+| Round 4: answer checked against the request | **44 of 44** | **8 of 8** | 0 | 21 of 21 | 0 | 4.1 s |
+| Round 4, three runs | 65 of 66 | 12 of 12 | 0 | 20 of 21 | 0 | 4.1 s |
+| Round 4 with temperature 0.3 and top-K 3 (run cut short at 64 of 78 cases) | 56 of 56 | 8 of 8 | 0 | 21 of 21 | 0 | 4.5 s |
+| Final: temperature 0.3, settings examples in the prompt, style rule | **44 of 44** | **8 of 8** | 0 | 21 of 21 | 1, cut off at 12 s and answered on the retry (18.7 s) | 4.5 s |
+
+The second and third rows are the same code. The third was meant to test lower sampling, but Chrome 157 has no `LanguageModel.params()`, so the old code never sent it. The gap between them is how much Nano varies from one run to the next. Small differences between single runs prove little.
+
+Sampling: Chrome 157 accepts `temperature` and `topK` in `create()` without `params()`, and the session reports them back (0.3 and 3). With lower sampling, round 4 was as good as with Chrome's defaults; the difference is within run-to-run noise. Rockyweb now asks for temperature 0.3 and top-K 3, because every answer it needs is a pick from a fixed list. A Chrome that refuses them gets a session with its defaults (unit-tested). The new check corrected 7 of 78 default-sampling answers and 5 of 64 low-sampling ones.
+
+The one miss in the three runs ("dark mode please" applied to the app bar) led to one more rule: a text size, spacing, colour or font change on a part the request does not mention goes to the whole page. It is unit-tested on that answer, and the final run below includes it.
+
+What Nano got wrong before round 4, and what Rockyweb now does about it:
+- **Hiding the wrong thing.** For example, "hide the sign in box" hid the chat button, and "get rid of the newsletter box" hid the app bar. Every hide or unstick is now checked against the words of the request and the outline. A hide aimed at something the request does not mention is moved to the only part that does match, or dropped with a note ("hiding “Chat with us”, which does not look like what you asked for"). Protected parts such as sign-in forms are never a target. "Hide everything" style requests skip the check, and still never reach the main content or forms.
+- **Wrong operation.** Nano paused videos for "stop the animations", gave 100 or 110 for "smaller", and gave sepia or dark for "black and white". It also paused the floating video for "following me down the page". Fixed rules now correct these where the words are unambiguous.
+- **Runaway answers.** Nano sometimes repeats "Unsupported request." until the limit. The schema is now tighter (short values, at most 5 edits, no extra fields), and an answer still writing after 12 s is cut off and asked once more.
+
+Page fixes (app bar, floating video, tall sticky header, promo bar, locked scrolling): 4 of 4 in every run. The obvious header fix was applied automatically, and the promo bar was suggested. A "subscribe to continue" notice was never touched.
+
 ## Soak against real Nano (`tests/nano/soak.mjs`, measured 2026-11-15)
 
 200 navigations in one official Chrome 157 session after a 591 s warm-up, cycling five page kinds (article with overlay, known consent platform, unknown banner, login page with a form, plain page), 40 of each.
@@ -210,11 +248,11 @@ The private tab exists only in the worker's memory while it is open, marked `inc
 
 ## What used the model double instead
 
-The 41 automatic optimisation, Light and consent browser checks (`tests/e2e/run-ai-e2e.mjs`), the settings page's download and availability states, and `npm run perf`. The 28 core browser checks (`tests/e2e/run-e2e.mjs`) ran in Chromium 159, where `LanguageModel` reports `unavailable`, so they show everything else works with no model at all. In that same browser the AI toggle and "describe a change" were greyed out with "On-device AI is unavailable in this browser or on this device."
+The 46 automatic optimisation, Light, consent and welcome page browser checks (`tests/e2e/run-ai-e2e.mjs`), the settings page's download and availability states, and `npm run perf`. The 29 core browser checks (`tests/e2e/run-e2e.mjs`) ran in Chromium 159, where `LanguageModel` reports `unavailable`, so they show everything else works with no model at all. In that same browser the AI toggle and "describe a change" were greyed out with "On-device AI is unavailable in this browser or on this device."
 
 ## Remaining limitations
 
 - Real Nano was tested on one machine. The cold start in particular will differ on other hardware.
-- The first inference after each browser start took 4 to 11 minutes on this laptop, so for those first minutes overlays are left alone.
-- "Describe a change" was scored on 11, then 20 requests in one site state (16 of 20 in the wider set). Nano's raw answers vary between runs; the fixed rules catch the mistakes seen so far, and the preview and undo remain the safeguard.
+- The first inference after each browser start took 4 to 16 minutes on this laptop (937 s once on Chrome 157.0.8103.80), so for those first minutes overlays are left alone.
+- "Describe a change" was scored on 11, then 20 settings requests (16 of 20 in the wider set), and page changes on 26 requests across four fixture sites (65 of 66 and 12 of 12 safety over three runs). These are local fixtures, not real websites. Nano's raw answers vary between runs; the fixed rules catch the mistakes seen so far, and the preview and undo remain the safeguard.
 - The paired fixtures were last run against real Nano before this round's scheduling and backoff changes; the decision rules they test did not change.

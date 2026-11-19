@@ -27,6 +27,19 @@
     </header>
 
     <main class="content" id="content">
+      <section id="welcome" class="section welcome" hidden>
+        <h1>rocky's on guard</h1>
+        <p class="lead">Rockyweb is already working on every website. There is nothing you have to set up.</p>
+        <dl class="facts" id="welcomeFacts"></dl>
+        <div class="welcome-ai" id="welcomeAi" hidden>
+          <h2>one optional extra: on-device AI</h2>
+          <p>Chrome can run a small AI model on this computer. With it, Rockyweb can make page changes you describe in the toolbar ("hide the sticky header and make the text bigger"), offer fixes for common page annoyances, and refuse cookie banners its rules don't recognise. It never accepts cookies for you, every change can be undone, and nothing leaves your device.</p>
+          <p class="ai-status" id="welcomeAiStatus" role="status" aria-live="polite"></p>
+          <div class="welcome-actions" id="welcomeAiActions"></div>
+        </div>
+        <p class="welcome-next">Change your answer to cookie popups under <a href="#cookies">cookies</a>, or see <a href="#protection">all settings</a>. The toolbar icon has a switch for each website.</p>
+      </section>
+
       <section id="protection" class="section" hidden>
         <h1>protection</h1>
         <p class="lead">The default mode applies to every website that doesn't have its own. Change a single site from the toolbar popup.</p>

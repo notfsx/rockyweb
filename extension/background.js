@@ -1424,6 +1424,11 @@ chrome.runtime.onInstalled.addListener((details) => {
     .then(syncRules)
     .then(() => log(`ready (${details.reason})`))
     .catch((err) => warn('install init failed', err));
+  // A fresh install opens the welcome page once: what already works, and the optional on-device AI.
+  // Never on updates.
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options.html#welcome') }).catch(() => {});
+  }
 });
 
 chrome.runtime.onStartup.addListener(() => {

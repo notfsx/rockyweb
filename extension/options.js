@@ -7,7 +7,7 @@
   const { h, send, seg, onOff, toggle, fmt, timeAgo, errorText, keepFocus } = RW.UI;
   const $ = (id) => document.getElementById(id);
 
-  const PAGES = ['protection', 'cookies', 'custom', 'websites', 'trackers', 'hidden', 'data'];
+  const PAGES = ['welcome', 'protection', 'cookies', 'custom', 'websites', 'trackers', 'hidden', 'data'];
   const MODE_LABEL = { off: 'off', consent_only: 'consent', balanced: 'balanced', strict: 'strict', custom: 'custom' };
   const HEURISTIC_TEXT = { off: 'ignored', cookie_strip: 'cookies stripped', hard_block: 'blocked' };
   const CONSENT_TEXT = { off: 'left alone', custom_categories: 'your choices', strict_reject: 'reject all' };
@@ -77,6 +77,7 @@
       else a.removeAttribute('aria-current');
     }
     window.scrollTo(0, 0);
+    renderWelcome();
   }
 
   // ---------------------------------------------------------------- pages
@@ -171,6 +172,52 @@
         h('button', { class: 'btn', type: 'button', text: 'cancel download', onclick: () => ai.ctrl && ai.ctrl.abort() }));
     }
     setup.hidden = !setup.childNodes.length;
+    renderWelcome();
+  }
+
+  // ---- first run (#welcome, opened once after install): what already works, and the optional AI
+  const welcome = { notNow: false };
+
+  function renderWelcome() {
+    if (!S || $('welcome').hidden) return;
+    const cfg = RW.getEffectiveConfig(S, null);
+    const fact = (label, value) => h('div', {}, h('dt', { text: label }), h('dd', { text: value }));
+    $('welcomeFacts').replaceChildren(
+      fact('cookie popups', CONSENT_TEXT[cfg.consentMode]),
+      fact('known ads & trackers', cfg.adBlockNetwork ? 'blocked' : 'allowed'),
+      fact('tracking links', cfg.stripUrlParams ? 'cleaned' : 'untouched'));
+    const a = ai.availability;
+    const card = $('welcomeAi');
+    // Only offered when this device can run the model.
+    card.hidden = a === 'absent' || a === 'unavailable' || a === 'error';
+    if (card.hidden) return;
+    const pref = !!S.aiSettings.autoOptimise;
+    const status = $('welcomeAiStatus');
+    const actions = $('welcomeAiActions');
+    const btn = (text, onclick, primary) => h('button', { class: `btn${primary ? ' on' : ''}`, type: 'button', onclick, text });
+    const notNow = btn('not now', () => { welcome.notNow = true; renderWelcome(); });
+    let text = '';
+    let row = [];
+    if (a === null) text = 'Checking whether this computer can run it…';
+    else if (S.operatingMode === 'light') text = 'AI is paused in Light mode. Switch to Full under all settings to use it.';
+    else if (ai.setup === 'downloading') {
+      text = `Chrome is downloading the model${ai.progress ? ` (${Math.round(ai.progress * 100)}%)` : ''}. You can close this page and keep browsing.`;
+      row = [h('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Model download', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(ai.progress * 100)) },
+        h('span', { style: { width: `${Math.round(ai.progress * 100)}%` } })), btn('cancel download', () => ai.ctrl && ai.ctrl.abort())];
+    } else if (a === 'downloading' || ai.otherSetup) text = 'Chrome is downloading the model. This page updates when it is ready.';
+    else if (pref && a === 'available') text = 'On. Open the toolbar icon on any website and choose "describe a change".';
+    else if (welcome.notNow) text = 'No problem. You can turn it on any time under all settings.';
+    else if (a === 'downloadable') {
+      text = 'Chrome downloads the model once. It is large (usually a few gigabytes), and Chrome manages and stores it, not Rockyweb.';
+      row = [btn('download and turn on', startDownload, true), notNow];
+    } else if (a === 'available') {
+      text = 'The model is already on this computer.';
+      row = [btn('turn on', () => act(A.SET_AI_AUTO_OPTIMISE, { enabled: true }, 'Automatic optimisation is on'), true), notNow];
+    }
+    status.textContent = ai.error || text;
+    status.classList.toggle('warn', !!ai.error);
+    actions.replaceChildren(...row);
+    actions.hidden = !row.length;
   }
 
   function onAiToggle(enabled) {

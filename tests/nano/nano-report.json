@@ -1,12 +1,12 @@
 {
-  "startedAt": "2026-11-15T07:57:02.987Z",
+  "startedAt": "2026-11-19T18:25:02.221Z",
   "platform": "win32 10.0.26300",
   "cpus": 16,
   "ramGb": 47,
   "steps": [
     {
       "name": "connected to Chrome",
-      "version": "157.0.8103.51"
+      "version": "157.0.8103.80"
     },
     {
       "name": "extension loaded over the CDP pipe",
@@ -32,7 +32,7 @@
     {
       "name": "cold model: article overlay",
       "state": "shown",
-      "seconds": 21.1,
+      "seconds": 20.9,
       "modelCalls": 0,
       "timeouts": 1,
       "warming": 0,
@@ -41,7 +41,7 @@
     {
       "name": "cold model: next article during the backoff",
       "state": "shown",
-      "seconds": 1.1,
+      "seconds": 0.9,
       "modelCalls": 0,
       "timeouts": 0,
       "warming": 1,
@@ -49,13 +49,13 @@
     },
     {
       "name": "model warm-up by the test harness",
-      "createSeconds": 311.9,
-      "firstInferenceSeconds": 0.2
+      "createSeconds": 494.3,
+      "firstInferenceSeconds": 0.3
     },
     {
       "name": "article with newsletter overlay",
       "state": "hidden",
-      "seconds": 3.2,
+      "seconds": 3.3,
       "modelCalls": 1,
       "timeouts": 0,
       "warming": 0,
@@ -72,13 +72,13 @@
     {
       "name": "article after the session was released",
       "state": "hidden",
-      "seconds": 2.9,
+      "seconds": 2.7,
       "modelCalls": 1,
       "timeouts": 0,
       "warming": 0,
       "pending": 0
     }
   ],
-  "chrome": "157.0.8103.51",
+  "chrome": "157.0.8103.80",
   "result": "pass"
 }

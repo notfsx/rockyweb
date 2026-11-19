@@ -236,9 +236,10 @@
     properties: {
       op: { type: 'string', enum: OP_NAMES },
       target: { type: 'string', pattern: '^(page|e[0-9]{1,2})$' },
-      value: { type: ['string', 'number'] }
+      value: { type: ['string', 'number'], maxLength: 10 }
     },
-    required: ['op', 'target']
+    required: ['op', 'target'],
+    additionalProperties: false
   };
 
   const EDIT_PROMPT_LINES = [
@@ -251,7 +252,7 @@
 
   function planWithEditsSchema() {
     const base = JSON.parse(JSON.stringify(RW.AI_PLAN_SCHEMA));
-    base.properties.edits = { type: 'array', maxItems: MAX_OPS, items: EDIT_SCHEMA_ITEM };
+    base.properties.edits = { type: 'array', maxItems: 5, items: EDIT_SCHEMA_ITEM };
     base.required = ['changes', 'edits', 'unsupported'];
     return base;
   }
@@ -273,21 +274,136 @@
   const editRequest = (text, outline) =>
     `Page outline:\n${outlineText(outline) || '(nothing notable)'}\nRequest about this website: ${JSON.stringify(String(text).slice(0, 300))}`;
 
+  // The settings examples go in too, with no edits, so a settings request still gets a settings
+  // answer. Without them Nano answered "stop hiding the empty ad boxes" with a page edit.
+  const SETTINGS_OUTLINE = 'e1 | main content | 70% of screen | "Today\'s deals"';
+  function allExamples() {
+    const plan = (RW.AI_PLAN_EXAMPLES || []).map(([ask, ans]) => [ask, SETTINGS_OUTLINE, { changes: ans.changes, edits: [], unsupported: ans.unsupported }]);
+    const out = [];
+    for (let i = 0; i < Math.max(plan.length, EDIT_EXAMPLES.length); i++) {
+      if (EDIT_EXAMPLES[i]) out.push(EDIT_EXAMPLES[i]);
+      if (plan[i]) out.push(plan[i]);
+    }
+    return out;
+  }
+
   function editInitialPrompts() {
     const sys = `${RW.AI_PLAN_SYSTEM_PROMPT.replace(/\nAnswer with JSON only:.*$/, '')}\n${EDIT_PROMPT_LINES.join('\n')}`;
     const turns = [{ role: 'system', content: sys }];
-    for (const [ask, outline, answer] of EDIT_EXAMPLES) {
+    for (const [ask, outline, answer] of allExamples()) {
       const lines = outline.split('\n').map((l) => { const [id, kind, area, text] = l.split(' | '); return { id, kind, area: parseInt(area, 10), text: text.replace(/"/g, '') }; });
       turns.push({ role: 'user', content: editRequest(ask, lines) }, { role: 'assistant', content: JSON.stringify(answer) });
     }
     return turns;
   }
 
+  // ---- what the request is about, to catch a model that points at the wrong thing
+
+  // Words for the same thing; a request and an outline item match when they share a group or a word.
+  const TOPICS = [
+    ['header', 'heading', 'masthead', 'navigation', 'nav', 'menu', 'top'],
+    ['app', 'download', 'install'],
+    ['sidebar', 'side', 'rail', 'column', 'aside'],
+    ['ad', 'ads', 'advert', 'adverts', 'advertisement', 'advertising', 'sponsor', 'sponsored', 'promo', 'promotion', 'promotional', 'offer', 'deal', 'discount', 'sale', 'delivery'],
+    ['video', 'videos', 'player', 'clip', 'floating'],
+    ['chat', 'bubble', 'help', 'support', 'assistant', 'corner'],
+    ['newsletter', 'email', 'signup', 'subscribe', 'inbox', 'mailing'],
+    ['comment', 'comments', 'discussion', 'replies'],
+    ['footer', 'bottom'],
+    ['popup', 'overlay', 'modal', 'dialog'],
+    ['related', 'recommended', 'trending', 'popular', 'more'],
+    ['share', 'social'],
+    ['sign', 'signin', 'login', 'account', 'password']
+  ];
+  const STOP = new Set(['the', 'and', 'this', 'that', 'with', 'from', 'for', 'please', 'hide', 'remove', 'get', 'rid', 'make', 'stop', 'page', 'site',
+    'website', 'thing', 'things', 'all', 'off', 'out', 'away', 'can', 'you', 'its', 'it', 'me', 'my', 'of', 'on', 'in', 'to', 'a', 'an', 'is', 'bit', 'too', 'very', 'just', 'keep', 'box', 'bar', 'section']);
+  const words = (t) => String(t || '').toLowerCase().replace(/sign[ -]?(up|in)/g, (m) => m.replace(/[ -]/, '')).replace(/log[ -]?in/g, 'login').split(/[^a-z]+/).filter((w) => w.length > 1);
+  const topicsOf = (ws) => new Set(TOPICS.flatMap((g, i) => (g.some((x) => ws.includes(x)) ? [i] : [])));
+  const GENERIC = /\b(everything|every \w+|clutter\w*|distraction\w*|annoyance\w*|junk|rubbish|except|apart from|anything else)\b/i;
+  const HIDE_INTENT = /\b(hide|remove|get rid|rid of|close|dismiss|delete|take away|clear|unstick|follow\w*|sticky|stuck|in the way|cover\w*|takes? up)\b/i;
+
+  const STYLE_OPS = new Set(['text_size', 'line_spacing', 'colours', 'font']);
+
+  function nodeMatches(reqWords, reqTopics, node) {
+    const nw = words(`${node.kind} ${node.text}`);
+    if (nw.some((w) => !STOP.has(w) && w.length > 2 && reqWords.includes(w))) return true;
+    const nt = topicsOf(nw);
+    return [...reqTopics].some((t) => nt.has(t));
+  }
+
+  // A hide or unstick must be about something the request names, when the request names something
+  // this page has. When exactly one item fits, the edit is moved to it; otherwise it is left out.
+  function guardTargets(request, edits, outline, notes) {
+    if (!request) return edits;
+    const rw = words(request);
+    const rt = topicsOf(rw);
+    // A style change on a part the request does not mention ("dark mode" on the app bar) is for
+    // the whole page.
+    edits = edits.reduce((out, e) => {
+      const node = STYLE_OPS.has(e.op) && e.target !== 'page' ? outline.find((n) => n.id === e.target) : null;
+      if (!node || nodeMatches(rw, rt, node)) out.push(e);
+      else if (!edits.some((x) => x.op === e.op && x.target === 'page') && !out.some((x) => x.op === e.op && x.target === 'page')) {
+        const p = Object.assign({}, e, { target: 'page' });
+        delete p.what;
+        out.push(p);
+      }
+      return out;
+    }, []);
+    if (GENERIC.test(request)) return edits;
+    const fits = (outline || []).filter((n) => !n.main && nodeMatches(rw, rt, n));
+    // The request names nothing on this page: trust the model if it asked to hide or move something at all.
+    if (!fits.length && HIDE_INTENT.test(request)) return edits;
+    const out = [];
+    for (const e of edits) {
+      if (e.target === 'page' || (e.op !== 'hide' && e.op !== 'unstick')) { out.push(e); continue; }
+      const node = outline.find((n) => n.id === e.target);
+      if (node && fits.includes(node)) { out.push(e); continue; }
+      const free = fits.filter((n) => !edits.some((x) => x.op === e.op && x.target === n.id));
+      if (fits.length === 1 && free.length === 1 && !(e.op === 'hide' && free[0].protected)) {
+        out.push(Object.assign({}, e, { target: free[0].id, what: cleanText(free[0].text, 60) || free[0].kind }));
+      } else notes.push(`${e.op === 'hide' ? 'hiding' : 'unsticking'} “${cleanText(node ? node.text || node.kind : e.target, 40)}”, which does not look like what you asked for`);
+    }
+    return out;
+  }
+
+  // Where the request is unambiguous, the edit follows it: "animations" stops motion, "black and
+  // white" is grey, and "bigger" or "smaller" really changes the size.
+  function repairEdits(request, edits) {
+    const t = String(request || '').toLowerCase();
+    let out = edits.slice();
+    const pageOp = (op) => out.find((e) => e.op === op && e.target === 'page');
+    const ensure = (op, value) => { const e = pageOp(op); if (e) { if (value !== undefined) e.value = value; } else out.push(value === undefined ? { op, target: 'page' } : { op, target: 'page', value }); };
+    if (/\banimat|\bmoving\b|\bmotion\b|\bspinn|\bflash|\bblink/.test(t)) {
+      ensure('stop_motion');
+      if (!/video|autoplay|playing|sound|audio/.test(t)) out = out.filter((e) => e.op !== 'pause_media');
+    }
+    const colour = /black and white|\bgr[ae]y(scale)?\b|monochrome/.test(t) ? 'grey' : /\bsepia\b|\bwarm(er)? colou?rs?\b/.test(t) ? 'sepia'
+      : /\bdark (mode|theme|colou?rs?|background)\b|\bnight mode\b|\bdark mode\b/.test(t) ? 'dark' : /\bhigh contrast\b|\bmore contrast\b/.test(t) ? 'contrast' : null;
+    if (colour) { const e = out.find((x) => x.op === 'colours'); if (e) e.value = colour; else ensure('colours', colour); }
+    const textAsk = /\b(text|font|writing|words|letters|type)\b/.test(t);
+    const up = textAsk && /\b(bigger|larger|increase|enlarge|too small|hard to read|zoom in)\b/.test(t);
+    const down = textAsk && /\b(smaller|reduce|decrease|too big|too large|zoom out)\b/.test(t);
+    // "Follows me down the page" is about position, not playback.
+    if (/\b(follow\w*|floating|stuck to|sticky|stays? on (the )?screen)\b/.test(t) && !/\b(play\w*|autoplay|sound)\b/.test(t)) {
+      out = out.map((e) => (e.op === 'pause_media' && e.target !== 'page' && !out.some((x) => x.op === 'unstick' && x.target === e.target) ? Object.assign({}, e, { op: 'unstick' }) : e));
+    }
+    const size = pageOp('text_size');
+    if (/\b(easier to read|more readable|hard to read|readability|strain)\b/.test(t) && (!size || size.value === 100)) ensure('text_size', 115);
+    // A size the request put on a named part counts too.
+    const sized = size || out.find((e) => e.op === 'text_size');
+    const resize = (value) => { if (sized) sized.value = value; else ensure('text_size', value); };
+    if (up && (!sized || sized.value <= 100)) resize(125);
+    if (down && (!sized || sized.value >= 100)) resize(85);
+    // 100 percent changes nothing.
+    out = out.filter((e) => !(e.op === 'text_size' && e.value === 100));
+    return out.slice(0, MAX_OPS);
+  }
+
   // The model's edits, checked against the outline it was shown. Unknown ops, ids not in the
   // outline, values out of range and the main content as a hide target are all dropped with a note.
-  function parseEdits(text, outline) {
+  function parseEdits(text, outline, request) {
     let obj;
-    try { obj = JSON.parse(String(text || '').trim()); } catch (_) { return { edits: [], notes: [] }; }
+    try { obj = JSON.parse(String(text || '').trim()); } catch (_) { return { edits: [], notes: [], dropped: 0 }; }
     const raw = isObj(obj) && Array.isArray(obj.edits) ? obj.edits.slice(0, MAX_OPS) : [];
     const ids = new Map((outline || []).map((n) => [n.id, n]));
     const edits = [];
@@ -324,7 +440,8 @@
       edits.push(op);
     }
     if (dropped) notes.push(`${dropped} suggested page change${dropped === 1 ? '' : 's'} Rockyweb could not match to this page`);
-    return { edits, notes };
+    const fixed = request ? repairEdits(request, guardTargets(request, edits, outline, notes)) : edits;
+    return { edits: fixed, notes, dropped };
   }
 
   // ---- proactive fixes

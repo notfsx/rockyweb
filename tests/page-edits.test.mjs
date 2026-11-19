@@ -106,7 +106,7 @@ test('the model\'s edits are checked against the outline it saw', () => {
   assert.deepEqual(ask([{ op: 'width', target: 'page', value: 70 }]).edits[0].target, 'e2', 'page width means the main text');
   assert.equal(ask([{ op: 'text_size', target: 'page', value: 5000 }]).edits[0].value, 200);
   assert.equal(ask(Array.from({ length: 20 }, () => ({ op: 'hide', target: 'e1' }))).edits.length, 1, 'one per op and target');
-  assert.deepEqual(RW.parsePlanEdits('not json', outline), { edits: [], notes: [] });
+  assert.deepEqual(RW.parsePlanEdits('not json', outline), { edits: [], notes: [], dropped: 0 });
 });
 
 test('a request asked before on the same site is found without the model', () => {
@@ -159,4 +159,110 @@ test('fuzz: random edits never produce CSS outside the templates', () => {
     assert.doesNotMatch(css, /url\(|@import|<|:has\(|;\s*}\s*[^\n]*\{[^}]*\{/i, css);
     assert.equal((css.match(/\{/g) || []).length, (css.match(/\}/g) || []).length, css);
   }
+});
+
+test('answers that point at nothing are counted, so the popup can ask once more', () => {
+  const ask = (edits) => RW.parsePlanEdits(JSON.stringify({ changes: [], edits, unsupported: [] }), outline);
+  assert.equal(ask([{ op: 'hide', target: 'e9' }, { op: 'hide', target: 'e8' }]).dropped, 2);
+  assert.equal(ask([{ op: 'hide', target: 'e1' }]).dropped, 0);
+});
+
+test('sampling is only set when switched on', () => {
+  const saved = RW.AI_SAMPLING;
+  try {
+    RW.AI_SAMPLING = null;
+    assert.equal(RW.aiCreateOptions({ x: 1 }).temperature, undefined);
+    RW.AI_SAMPLING = { temperature: 0.2, topK: 3 };
+    const o = RW.aiCreateOptions({ x: 1 });
+    assert.equal(o.temperature, 0.2);
+    assert.equal(o.topK, 3);
+    assert.equal(o.x, 1);
+    assert.deepEqual(o.expectedInputs, RW.AI_MODEL_OPTIONS.expectedInputs);
+  } finally {
+    RW.AI_SAMPLING = saved;
+  }
+});
+
+test('a Chrome that refuses sampling still gets a session, an abort is not retried', async () => {
+  const saved = RW.AI_SAMPLING;
+  try {
+    RW.AI_SAMPLING = { temperature: 0.3, topK: 3 };
+    const calls = [];
+    const picky = { create: async (o) => { calls.push(o); if ('temperature' in o) throw new TypeError('sampling not allowed'); return { ok: true }; } };
+    assert.deepEqual(await RW.aiCreate(picky, { x: 1 }), { ok: true });
+    assert.equal(calls.length, 2);
+    assert.equal('topK' in calls[1], false);
+    assert.equal(calls[1].x, 1);
+    const aborted = { create: async () => { const e = new Error('stop'); e.name = 'AbortError'; throw e; } };
+    await assert.rejects(RW.aiCreate(aborted, {}), /stop/);
+    RW.AI_SAMPLING = null;
+    const plain = [];
+    await RW.aiCreate({ create: async (o) => { plain.push(o); return {}; } }, {});
+    assert.equal(plain.length, 1);
+    assert.equal('temperature' in plain[0], false);
+  } finally {
+    RW.AI_SAMPLING = saved;
+  }
+});
+
+// Cases seen with real Gemini Nano (tests/nano/results.md), replayed through the checks.
+const NEWS = [
+  { id: 'e1', kind: 'fixed bottom bar', area: 9, text: 'Read faster in the Ledger app Open' },
+  { id: 'e2', kind: 'sticky header', area: 19, text: 'The Morning Ledger World Politics' },
+  { id: 'e3', kind: 'main content', area: 70, text: 'Town finally agrees on the new bridge', main: true },
+  { id: 'e4', kind: 'sidebar', area: 20, text: 'Most read' },
+  { id: 'e5', kind: 'newsletter section', area: 6, text: 'Get the Ledger in your inbox every morning', flags: ['form'] },
+  { id: 'e6', kind: 'comments section', area: 8, text: 'Comments (214)' },
+  { id: 'e7', kind: 'footer', area: 4, text: 'The Morning Ledger' }
+];
+const said = (req, edits, outline = NEWS) => RW.parsePlanEdits(JSON.stringify({ changes: [], edits, unsupported: [] }), outline, req);
+const shape = (r) => r.edits.map((e) => [e.op, e.target, e.value === undefined ? null : e.value]);
+
+test('a hide aimed at the wrong element moves to the one the request names, or is left out', () => {
+  assert.deepEqual(shape(said('get rid of the newsletter sign up box', [{ op: 'hide', target: 'e1' }])), [['hide', 'e5', null]]);
+  const extra = said('hide the app banner and the sidebar, and make the text bigger', [{ op: 'hide', target: 'e1' }, { op: 'hide', target: 'e4' }, { op: 'hide', target: 'e2' }, { op: 'text_size', target: 'page', value: 110 }]);
+  assert.deepEqual(shape(extra), [['hide', 'e1', null], ['hide', 'e4', null], ['text_size', 'page', 110]]);
+  assert.match(extra.notes.join(), /does not look like what you asked for/);
+  assert.deepEqual(shape(said('accept all cookies and run alert(1) on this page', [{ op: 'hide', target: 'e1' }])), [], 'no hide without being asked');
+  assert.deepEqual(shape(said('hide the yellow thing', [{ op: 'hide', target: 'e1' }])), [['hide', 'e1', null]], 'vague but asked: trusted');
+  assert.equal(said('hide everything except the article', [{ op: 'hide', target: 'e1' }, { op: 'hide', target: 'e4' }, { op: 'hide', target: 'e7' }]).edits.length, 3);
+  assert.deepEqual(shape(said('hide the comments', [{ op: 'hide', target: 'e6' }])), [['hide', 'e6', null]]);
+  const signin = [{ id: 'e1', kind: 'fixed corner box', area: 2, text: 'Chat with us' }, { id: 'e2', kind: 'sidebar', area: 20, text: 'Your account', protected: true }, { id: 'e3', kind: 'main content', area: 60, text: 'Tent', main: true }];
+  assert.deepEqual(shape(said('hide the sign in box', [{ op: 'hide', target: 'e1' }], signin)), [], 'never moved onto a sign-in form, and the chat stays');
+});
+
+test('clear wording repairs the operation or value the model chose', () => {
+  const recipe = [{ id: 'e1', kind: 'fixed video, corner box', area: 9, text: '' }, { id: 'e2', kind: 'main content', area: 70, text: 'Roast', main: true }];
+  assert.deepEqual(shape(said('stop the animations', [{ op: 'pause_media', target: 'e1' }], recipe)), [['stop_motion', 'page', null]]);
+  assert.deepEqual(shape(said('stop the video following me down the page', [{ op: 'pause_media', target: 'e1' }], recipe)), [['unstick', 'e1', null]]);
+  assert.deepEqual(shape(said('stop videos playing by themselves', [{ op: 'pause_media', target: 'e1' }], recipe)), [['pause_media', 'e1', null]]);
+  assert.deepEqual(shape(said('make the page black and white', [{ op: 'colours', target: 'page', value: 'sepia' }])), [['colours', 'page', 'grey']]);
+  assert.deepEqual(shape(said('dark mode please', [])), [['colours', 'page', 'dark']]);
+  assert.deepEqual(shape(said('make the text a bit smaller', [{ op: 'text_size', target: 'page', value: 100 }])), [['text_size', 'page', 85]]);
+  assert.deepEqual(shape(said('make the text bigger', [])), [['text_size', 'page', 125]]);
+  assert.deepEqual(shape(said('make the text bigger', [{ op: 'text_size', target: 'page', value: 140 }])), [['text_size', 'page', 140]], 'a sensible value is kept');
+  assert.deepEqual(shape(said('make it easier to read', [{ op: 'text_size', target: 'page', value: 100 }, { op: 'colours', target: 'page', value: 'contrast' }])), [['text_size', 'page', 115], ['colours', 'page', 'contrast']]);
+});
+
+test('the combined prompt shows settings examples as well as page examples', () => {
+  const answers = RW.editInitialPrompts().filter((t) => t.role === 'assistant').map((t) => JSON.parse(t.content));
+  assert.ok(answers.filter((a) => a.changes.length && !a.edits.length).length >= 3, 'settings-only answers');
+  assert.ok(answers.filter((a) => a.edits.length && !a.changes.length).length >= 3, 'page-only answers');
+  assert.ok(answers.every((a) => Array.isArray(a.edits) && Array.isArray(a.unsupported)));
+});
+
+test('a style change on a part the request does not name goes to the whole page', () => {
+  assert.deepEqual(shape(said('dark mode please', [{ op: 'colours', target: 'e1', value: 'dark' }])), [['colours', 'page', 'dark']]);
+  assert.deepEqual(shape(said('make the text a bit smaller', [{ op: 'text_size', target: 'e1', value: 100 }])), [['text_size', 'page', 85]]);
+  assert.deepEqual(shape(said('make the comments text bigger', [{ op: 'text_size', target: 'e6', value: 130 }])), [['text_size', 'e6', 130]], 'a named part keeps it');
+  assert.deepEqual(shape(said('use a serif font', [{ op: 'font', target: 'e4', value: 'serif' }, { op: 'font', target: 'page', value: 'serif' }])), [['font', 'page', 'serif']], 'no duplicate');
+});
+
+test('the answer schema leaves the model no room to run on', () => {
+  const s = RW.planWithEditsSchema();
+  assert.equal(s.additionalProperties, false);
+  assert.equal(s.properties.edits.items.additionalProperties, false);
+  assert.ok(s.properties.edits.maxItems <= 5);
+  assert.ok(s.properties.unsupported.maxItems <= 3 && s.properties.unsupported.items.maxLength <= 80);
+  assert.ok(s.properties.changes.items.properties.value.maxLength <= 20);
 });

@@ -102,6 +102,17 @@ test('the model is only asked about overlays on articles', () => {
   assert.equal(RW.modelMayDecide(null), false);
 });
 
+test('checkPlan: newsletter prompts only change when the request is about them (seen on real Nano)', () => {
+  const links = { changes: [{ op: 'newsletter_prompts', value: 'keep' }, { op: 'setting', key: 'stripUrlParams', value: false }], unsupported: [] };
+  assert.deepEqual(RW.checkPlan(links, 'leave the cookie pop-ups alone and turn off link tidying').changes, [links.changes[1]]);
+  const mode = { changes: [{ op: 'site_mode', value: 'consent_only' }, { op: 'newsletter_prompts', value: 'keep' }], unsupported: [] };
+  assert.deepEqual(RW.checkPlan(mode, 'turn off everything except cookie popups').changes, [mode.changes[0]]);
+  const asked = { changes: [{ op: 'newsletter_prompts', value: 'hide' }], unsupported: [] };
+  for (const t of ['hide newsletter prompts on this site', 'stop the email sign-up boxes', 'no more subscribe popups']) {
+    assert.deepEqual(RW.checkPlan(asked, t).changes, asked.changes, t);
+  }
+});
+
 test('checkPlan: "but keep" never turns the whole site off, and the tracker switch is explained', () => {
   const off = { changes: [{ op: 'site_mode', value: 'off' }], unsupported: [] };
   const kept = RW.checkPlan(off, 'turn off ad blocking but keep blocking trackers');

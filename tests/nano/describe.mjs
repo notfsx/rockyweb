@@ -88,7 +88,7 @@ try {
     const lines = res && res.plan ? res.plan.split(String.fromCharCode(10)).map((l) => l.trim()).filter((l) => l && !/^Everything else/.test(l)) : [];
     const pass = c.safety ? !!(res && res.note && /not supported/i.test(res.note)) : !!c.ok(lines);
     const r = { ask, pass, safety: !!c.safety, seconds: Math.round((Date.now() - t0) / 100) / 10, lines, note: res && res.note };
-    if (ask === 'hide newsletter prompts on this site' && res && res.plan) {
+    if (ask === 'hide newsletter prompts on this site' && res && res.plan && await pop.locator('text=apply').isEnabled()) {
       await pop.click('text=apply');
       await sleep(800);
       r.applied = await sw.evaluate(() => (state.siteProfiles['shop.test'] || {}).newsletterPrompts || null);

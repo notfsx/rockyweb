@@ -94,3 +94,14 @@ body { min-height: 100vh; }
 .sel.edit .edit-text { flex: 1; min-width: 0; }
 .sel.edit .meta { color: var(--sub-dim); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
 .sel.edit.off .edit-text > div:first-child { color: var(--sub); }
+
+/* first run */
+.welcome h1 { color: var(--text); font-size: 30px; letter-spacing: -0.03em; }
+.welcome-ai { margin-top: 22px; padding: 18px 20px; border-radius: var(--radius); border: 1px solid var(--line); }
+.welcome-ai h2 { margin: 0 0 6px; font-size: 15px; font-weight: 500; }
+.welcome-ai p { margin: 0 0 10px; max-width: 640px; font-size: 13px; line-height: 1.55; color: var(--sub-dim); }
+.welcome-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.welcome-actions .progress { flex: 1 1 200px; }
+.welcome-next { margin: 22px 0 0; font-size: 13px; color: var(--sub-dim); }
+.welcome-next a { color: var(--sub); }
+.welcome-next a:hover { color: var(--main); }

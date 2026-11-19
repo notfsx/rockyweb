@@ -160,7 +160,7 @@ try {
   await p.close();
 
   const pages = await ext.evaluate(() => [...document.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute('href').slice(1)).filter(Boolean));
-  for (const id of [...new Set(pages)]) {
+  for (const id of [...new Set([...pages, 'welcome'])]) {
     const o = await context.newPage();
     await o.goto(`chrome-extension://${extId}/options.html#${id}`);
     await sleep(700);

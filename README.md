@@ -12,6 +12,8 @@ The loadable extension is the **`extension/`** folder. Everything else is toolin
 
 Chrome 116 or newer. No build step is needed.
 
+A fresh install opens a short welcome page (`options.html#welcome`): what already works without any setup, and, only when Chrome reports that this computer can run its on-device model, an offer to download it. Nothing downloads until you click. Updates never open it.
+
 ## Using it
 
 - **Popup:** the site, an on/off switch, the protection mode (off, consent, balanced, strict) and live numbers.
@@ -187,7 +189,7 @@ tests/          unit tests and the end-to-end suite
 - Learned-tracker rules are scoped by the requesting frame, so a cross-site iframe follows its own site's settings.
 - The stand-in scripts are web accessible, which lets a page detect that the extension is installed.
 - The browser suites (`npm run test:e2e`) and `npm run perf` use a deterministic model double in place of `LanguageModel`. Real inference is covered by `npm run test:nano` (see below).
-- After every Chrome start, the first Gemini Nano inference took 4 to 11 minutes on the test laptop, with or without debugging. Until the model is warm the overlay is simply left alone: the first request times out after 20 s, and for the next 60 s requests are answered at once without waiting again. After that, decisions take about 1 s.
+- After every Chrome start, the first Gemini Nano inference took 4 to 16 minutes on the test laptop, with or without debugging. Until the model is warm the overlay is simply left alone: the first request times out after 20 s, and for the next 60 s requests are answered at once without waiting again. After that, decisions take about 1 s.
 - While the model is loaded, Chrome's own model process holds about 5 GB of memory and 3 GB of video memory. Releasing Rockyweb's session does not unload it; Chrome decides when to.
 
 ## Real Gemini Nano: what was verified

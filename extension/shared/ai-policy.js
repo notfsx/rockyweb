@@ -169,14 +169,17 @@
           properties: {
             op: { type: 'string', enum: ['site_mode', 'newsletter_prompts', 'setting'] },
             key: { type: 'string', enum: Object.keys(PLAN_SETTINGS) },
-            value: { type: ['string', 'boolean'] }
+            value: { type: ['string', 'boolean'], maxLength: 20 }
           },
-          required: ['op', 'value']
+          required: ['op', 'value'],
+          additionalProperties: false
         }
       },
-      unsupported: { type: 'array', maxItems: 5, items: { type: 'string', maxLength: 120 } }
+      // Short and few: an unbounded string is where a looping model keeps writing.
+      unsupported: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 80 } }
     },
-    required: ['changes', 'unsupported']
+    required: ['changes', 'unsupported'],
+    additionalProperties: false
   };
 
   // Worked examples, sent as earlier turns of the plan session.
@@ -240,6 +243,9 @@
         notes.push('turning the whole site off would also stop what you asked to keep');
       }
     }
+    // Newsletter prompts only change when the request is about them. Nano added "leave alone" to
+    // requests about cookie popups and links.
+    if (!/news ?letter|sign[ -]?ups?|subscri|e-?mail|mailing|inbox/i.test(request)) changes = changes.filter((c) => c.op !== 'newsletter_prompts');
     const mode = changes.find((c) => c.op === 'site_mode');
     // Off stops everything on the site, so switches next to it mean nothing.
     if (mode && mode.value === 'off') changes = changes.filter((c) => c.op !== 'setting');
@@ -436,6 +442,7 @@
     AI_SYSTEM_PROMPT: SYSTEM_PROMPT,
     AI_PLAN_SYSTEM_PROMPT: PLAN_SYSTEM_PROMPT,
     AI_PLAN_SCHEMA: PLAN_SCHEMA,
+    AI_PLAN_EXAMPLES: PLAN_EXAMPLES,
     AI_CONSENT_KIND: CONSENT_KIND,
     AI_CONSENT_ACTIONS: CONSENT_ACTIONS,
     AI_CONSENT_MAX_BUTTONS: CONSENT_MAX_BUTTONS,

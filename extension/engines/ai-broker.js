@@ -80,10 +80,10 @@
       if (base) return Promise.resolve(base);
       if (!basePromise) {
         basePromise = (async () => {
-          const created = getLM().create(Object.assign({}, modelOptions, {
+          const created = RW.aiCreate(getLM(), {
             initialPrompts: [{ role: 'system', content: systemPrompt }],
             signal
-          }));
+          }, modelOptions);
           let s;
           try {
             s = await untilAborted(created, signal);

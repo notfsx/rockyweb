@@ -244,6 +244,29 @@ try {
     assert.ok(n >= 4, `expected URL-strip rules, got ${n}`);
   });
 
+  await check('welcome page: what already works, and the AI offer only where the model can run', async () => {
+    const opened = await poll(() => {
+      const n = context.pages().filter((p) => p.url().includes('#welcome')).length;
+      return n || null;
+    });
+    assert.equal(opened, 1, 'one welcome tab opens on a fresh install');
+    for (const p of context.pages()) if (p.url().includes('#welcome')) await p.close();
+    const w = await context.newPage();
+    await w.goto(`chrome-extension://${extId}/options.html#welcome`);
+    await w.waitForFunction(() => document.querySelectorAll('#welcomeFacts div').length === 3);
+    const v = await w.evaluate(() => ({
+      shown: !document.getElementById('welcome').hidden,
+      others: document.getElementById('protection').hidden,
+      facts: document.getElementById('welcomeFacts').innerText,
+      hasLM: typeof self.LanguageModel !== 'undefined',
+      ai: document.getElementById('welcomeAi').hidden
+    }));
+    assert.ok(v.shown && v.others);
+    assert.match(v.facts, /cookie popups/);
+    if (!v.hasLM) assert.equal(v.ai, true, 'no on-device AI here, so no offer');
+    await w.close();
+  });
+
   const web = await context.newPage();
   if (process.env.E2E_DEBUG) web.on('requestfailed', (r) => console.log('      [requestfailed]', r.url(), r.failure() && r.failure().errorText));
 

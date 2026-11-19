@@ -3,8 +3,6 @@
   'use strict';
   const RW = (root.RockyShared = root.RockyShared || {});
 
-  RW.VERSION = '1.0.0';
-
   RW.ACTIONS = Object.freeze({
     // content script -> background
     GET_EFFECTIVE_CONFIG: 'getEffectiveConfig',
@@ -132,6 +130,27 @@
     expectedInputs: [{ type: 'text', languages: ['en'] }],
     expectedOutputs: [{ type: 'text', languages: ['en'] }]
   });
+
+  // Sampling for every session. The answers are choices from fixed lists, so less randomness means
+  // fewer odd answers. null keeps Chrome's defaults. Chrome 157 takes it in create() even without
+  // LanguageModel.params(); a Chrome that refuses it gets a session with its defaults.
+  RW.AI_SAMPLING = { temperature: 0.3, topK: 3 };
+  RW.aiCreateOptions = (extra, base) => {
+    const s = RW.AI_SAMPLING;
+    const sampling = s ? { temperature: s.temperature, topK: s.topK } : {};
+    return Object.assign({}, base || RW.AI_MODEL_OPTIONS, sampling, extra || {});
+  };
+  RW.aiCreate = (LM, extra, base) => {
+    const opts = RW.aiCreateOptions(extra, base);
+    if (opts.temperature === undefined) return LM.create(opts);
+    return LM.create(opts).catch((err) => {
+      if (err && err.name === 'AbortError') throw err;
+      const plain = Object.assign({}, opts);
+      delete plain.temperature;
+      delete plain.topK;
+      return LM.create(plain);
+    });
+  };
 
   // Code switch for answering unknown cookie banners with the on-device model. When false the
   // feature never runs, whatever the settings say.

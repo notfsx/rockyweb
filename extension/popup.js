@@ -172,7 +172,7 @@
         on ? stat(fmt(s.ads), 'ads') : stat('off', 'ads', true, true),
         on ? stat(fmt(s.trackers), 'trackers') : stat('off', 'trackers', true, true),
         popup
-          ? stat(popup.method === 'hidden' ? 'hidden' : DECISION_WORD[popup.decision] || 'done', `cookies · ${popup.cmp.toLowerCase()}`, true)
+          ? stat(popup.method === 'hidden' ? 'hidden' : DECISION_WORD[popup.decision] || 'done', popup.cmp && popup.cmp !== 'Generic' ? `cookies · ${popup.cmp}` : 'cookie popup', true)
           : stat('none', 'cookie popup', true, true)),
       renderAdjustments(),
       renderChanges(cfg)
@@ -373,21 +373,47 @@
     describe.busy = true;
     render();
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 30000);
+    const timer = setTimeout(() => ctrl.abort(), 45000);
     let session = null;
+    let created = false;
+    let answered = false;
     try {
       const page = data.aiSettings && data.aiSettings.pageEdits !== false ? await toPage(A.GET_PAGE_OUTLINE) : null;
       const outline = page && Array.isArray(page.outline) ? page.outline : null;
-      session = await LanguageModel.create(Object.assign({}, RW.AI_MODEL_OPTIONS, {
-        initialPrompts: outline ? RW.editInitialPrompts() : RW.planInitialPrompts(), signal: ctrl.signal
-      }));
-      const raw = await session.prompt(outline ? RW.editRequest(text, outline) : RW.planRequest(text),
-        { responseConstraint: outline ? RW.planWithEditsSchema() : RW.AI_PLAN_SCHEMA, signal: ctrl.signal });
+      // The on-device model sometimes answers with broken JSON or element ids that are not on the
+      // page. One fresh try usually fixes it; a second bad answer is reported as it is.
+      let raw = '';
+      let parsed = { edits: [], notes: [], dropped: 0 };
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (session) { try { session.destroy(); } catch (_) { /* ignore */ } }
+        session = await RW.aiCreate(LanguageModel, {
+          initialPrompts: outline ? RW.editInitialPrompts() : RW.planInitialPrompts(), signal: ctrl.signal
+        });
+        created = true;
+        // A good answer takes a few seconds; one still writing after 12 s is stuck in a loop.
+        const turn = new AbortController();
+        const stop = () => turn.abort();
+        ctrl.signal.addEventListener('abort', stop);
+        const turnTimer = setTimeout(stop, 12000);
+        try {
+          raw = await session.prompt(outline ? RW.editRequest(text, outline) : RW.planRequest(text),
+            { responseConstraint: outline ? RW.planWithEditsSchema() : RW.AI_PLAN_SCHEMA, signal: turn.signal });
+          answered = true;
+        } catch (err) {
+          if (ctrl.signal.aborted) throw err;
+          raw = '';
+        } finally {
+          clearTimeout(turnTimer);
+          ctrl.signal.removeEventListener('abort', stop);
+        }
+        parsed = outline ? RW.parsePlanEdits(raw, outline, text) : parsed;
+        if (raw && RW.parsePlan(raw) && !(parsed.dropped && !parsed.edits.length)) break;
+      }
+      if (!raw) throw new Error('stuck');
       const plan = RW.checkPlan(RW.parsePlan(raw), text, cfg);
       let ops = [];
       let notes = [];
       if (outline && plan) {
-        const parsed = RW.parsePlanEdits(raw, outline);
         notes = parsed.notes;
         if (parsed.edits.length) {
           const res = await toPage(A.RESOLVE_PAGE_EDITS, { edits: parsed.edits });
@@ -401,8 +427,12 @@
         Object.assign(describe, { plan, preview: RW.describePlan(plan, cfg), ops, notes });
         if (ops.length) showOnPage(ops);
       }
-    } catch (_) {
-      describe.error = ctrl.signal.aborted ? 'That took too long. Please try again.' : 'On-device AI could not answer just now.';
+    } catch (err) {
+      // Creation is where a cold model waits: Chrome is still loading it after starting.
+      describe.error = !created && ctrl.signal.aborted
+        ? 'Chrome is still loading its on-device model, which can take several minutes after Chrome starts. Nothing was changed; try again shortly.'
+        : err && err.message === 'stuck' ? 'The on-device AI got stuck on that one. Nothing was changed; try rewording it.'
+          : ctrl.signal.aborted ? 'That took too long. Please try again.' : 'On-device AI could not answer just now.';
     } finally {
       clearTimeout(timer);
       if (session) { try { session.destroy(); } catch (_) { /* ignore */ } }

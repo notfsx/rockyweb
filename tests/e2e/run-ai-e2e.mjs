@@ -370,6 +370,41 @@ try {
     await p.close();
   });
 
+  await check('welcome page: offers the on-device AI only where it can run, and downloads only on a click', async () => {
+    const welcomeUi = (p) => p.evaluate(() => ({
+      card: !document.getElementById('welcomeAi').hidden,
+      status: document.getElementById('welcomeAiStatus').textContent,
+      buttons: [...document.querySelectorAll('#welcomeAiActions button')].map((b) => b.textContent),
+      created: window.__created || 0
+    }));
+    const open = async (state, extra) => { const p = await optionsWith(state, extra); await p.evaluate(() => { location.hash = 'welcome'; }); await sleep(500); return p; };
+    for (const st of ['absent', 'unavailable']) {
+      const p = await open(st);
+      assert.equal((await welcomeUi(p)).card, false, `no offer when ${st}`);
+      await p.close();
+    }
+    let p = await open('downloadable');
+    let ui = await welcomeUi(p);
+    assert.ok(ui.card);
+    assert.match(ui.status, /downloads the model once/);
+    assert.deepEqual(ui.buttons, ['download and turn on', 'not now']);
+    assert.equal(ui.created, 0, 'opening the welcome page never starts a download');
+    await p.click('#welcomeAiActions >> text=not now');
+    ui = await welcomeUi(p);
+    assert.match(ui.status, /any time/);
+    assert.equal(ui.created, 0);
+    assert.equal((await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.aiSettings.autoOptimise, false, 'not now leaves AI off');
+    await p.close();
+    p = await open('downloadable');
+    await p.click('#welcomeAiActions >> text=download and turn on');
+    ui = await poll(async () => { const u = await welcomeUi(p); return /^On\./.test(u.status) ? u : null; }, 6000);
+    assert.ok(ui, 'ready after the download');
+    assert.equal(ui.created, 1);
+    assert.equal((await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.aiSettings.autoOptimise, true);
+    await msg(ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: false });
+    await p.close();
+  });
+
   await check('settings: a ready model enables the toggle; Light mode pauses it and keeps the choice', async () => {
     const p = await optionsWith('available');
     let ui = await aiUi(p);
