@@ -14,12 +14,16 @@ import { EXT_DIR, loadShared } from '../../scripts/load-shared.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const RW = loadShared();
 const ROOT = path.resolve(EXT_DIR, '..');
-const OLD = '97f0aa6';
+const OLD = '97f0aa64fee703affa1e5e33a2fa951b12da4fba';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'rockyweb-upgrade-'));
 const live = path.join(work, 'live');
 fs.mkdirSync(live);
+// Shallow clones (CI) lack the old commit: fetch just that one.
+try { execSync(`git cat-file -e ${OLD}^{commit}`, { cwd: ROOT, stdio: 'ignore' }); } catch {
+  execSync(`git fetch --quiet --depth=1 origin ${OLD}`, { cwd: ROOT, stdio: 'inherit' });
+}
 execSync(`git archive ${OLD} extension | tar -x -C "${live.replace(/\\/g, '/')}"`, { cwd: ROOT, shell: 'bash' });
 const LIVE_EXT = path.join(live, 'extension');
 
