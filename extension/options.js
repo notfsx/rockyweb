@@ -4,7 +4,7 @@
 
   const RW = window.RockyShared;
   const A = RW.ACTIONS;
-  const { h, send, seg, onOff, toggle, fmt, timeAgo, errorText, keepFocus } = RW.UI;
+  const { h, send, seg, onOff, toggle, fmt, timeAgo, errorText, keepFocus, infoText, hintUses, countHintUse, hintFor } = RW.UI;
   const $ = (id) => document.getElementById(id);
 
   const PAGES = ['welcome', 'protection', 'cookies', 'custom', 'websites', 'trackers', 'hidden', 'data'];
@@ -31,9 +31,10 @@
 
   async function load() {
     try {
-      const r = await send(A.GET_OPTIONS_STATE);
+      const [r, sy] = await Promise.all([send(A.GET_OPTIONS_STATE), send(A.GET_SYNC_STATUS).catch(() => null)]);
       S = r.state;
       diag = r.diagnostics;
+      if (sy) syncInfo = sy.sync;
       keepFocus(renderAll);
     } catch (err) {
       toast(errorText(err), true);
@@ -91,23 +92,44 @@
       'Default protection mode', false, 'btns'));
     $('tierDescription').textContent = RW.TIER_META[tier].description;
     const cfg = RW.getEffectiveConfig(S, null);
-    const fact = (label, value, on) => h('div', {}, h('dt', { text: label }), h('dd', { class: on ? null : 'off', text: value }));
+    // Each value is a button: it switches to the next value and makes the default mode custom,
+    // exactly as the same switch on the custom page does.
+    const fact = (label, key, words) => {
+      const order = Object.keys(words);
+      const cur = String(cfg[key]);
+      const next = order[(order.indexOf(cur) + 1) % order.length];
+      const value = (v) => (v === 'true' ? true : v === 'false' ? false : v);
+      const offish = cur === 'false' || cur === 'off';
+      return h('div', {}, h('dt', { id: `fact-${key}`, text: label }), h('dd', { class: offish ? 'off' : null },
+        h('button', {
+          class: 'fact-btn', type: 'button', text: words[cur], 'aria-describedby': `fact-${key}`,
+          'aria-label': `${label}: ${words[cur]}. Change to ${words[next]}`,
+          title: `Change to ${words[next]}${tier === 'custom' ? '' : ' (the default mode becomes custom)'}`,
+          onclick: () => act(A.SET_GLOBAL_CUSTOM_OPTION, { key, value: value(next) }, `${label}: ${words[next]}${tier === 'custom' ? '' : ' · default mode is now custom'}`)
+        })));
+    };
     $('tierFacts').replaceChildren(
-      fact('cookie popups', CONSENT_TEXT[cfg.consentMode], cfg.consentMode !== 'off'),
-      fact('known ads & trackers', cfg.adBlockNetwork ? 'blocked' : 'allowed', cfg.adBlockNetwork),
-      fact('learned trackers', HEURISTIC_TEXT[cfg.trackerHeuristicMode], cfg.trackerHeuristicMode !== 'off'),
-      fact('ad slots', cfg.cosmeticFiltering ? 'hidden' : 'shown', cfg.cosmeticFiltering),
-      fact('annoyances', cfg.aggressiveFiltering ? 'hidden' : 'shown', cfg.aggressiveFiltering),
-      fact('tracking links', cfg.stripUrlParams ? 'cleaned' : 'untouched', cfg.stripUrlParams));
+      fact('cookie popups', 'consentMode', CONSENT_TEXT),
+      fact('known ads & trackers', 'adBlockNetwork', { true: 'blocked', false: 'allowed' }),
+      fact('learned trackers', 'trackerHeuristicMode', HEURISTIC_TEXT),
+      fact('ad slots', 'cosmeticFiltering', { true: 'hidden', false: 'shown' }),
+      fact('annoyances', 'aggressiveFiltering', { true: 'hidden', false: 'shown' }),
+      fact('tracking links', 'stripUrlParams', { true: 'cleaned', false: 'untouched' }));
 
     $('operatingButtons').replaceChildren(seg(
       ['full', 'light'].map((m) => ({ value: m, label: m, title: RW.OPERATING_META[m].description })),
       S.operatingMode,
       (m) => act(A.SET_OPERATING_MODE, { mode: m }, m === 'light' ? 'Light mode is on' : 'Full mode is on'),
       'How hard Rockyweb works', false, 'btns'));
-    $('operatingDescription').textContent = RW.OPERATING_META[S.operatingMode].description;
+    const op = OPERATING_TEXT[S.operatingMode];
+    $('operatingDescription').replaceChildren(infoText(op[0], op[1], 'how hard Rockyweb works'));
     renderAi();
   }
+
+  const OPERATING_TEXT = {
+    full: ['Everything Rockyweb offers.', 'Includes tracker learning and deep page scanning, and automatic optimisation if you turn it on. Light mode uses less of your computer.'],
+    light: ['Uses less of your computer.', 'Blocking, link cleaning and your site settings stay. Tracker learning, AI and deep page scanning pause. Cookie popups are answered only for the consent platforms Rockyweb recognises.']
+  };
 
   // ---- automatic optimisation (Chrome's on-device AI)
   // Opening this page only calls availability(). A model download starts only from the user's click.
@@ -148,6 +170,10 @@
 
   function renderAi() {
     if (!S) return;
+    $('aiDescription').replaceChildren(infoText(
+      'Small adjustments with Chrome’s on-device AI: hiding an unsolicited newsletter overlay on an article, and refusing a cookie banner Rockyweb does not recognise.',
+      'An overlay you can undo from the toolbar. A cookie banner is answered only when your cookie choices refuse something, by clicking its refuse button; for that, the banner’s heading and button labels go to the on-device model, which runs on this computer. Buttons that accept are removed before the model sees anything. A banner answer is listed in the toolbar; it cannot be unclicked, but the site’s own cookie settings link reopens its choices. The first answer after Chrome starts can take several minutes while Chrome loads its model; until then nothing is changed.',
+      'automatic optimisation'));
     const st = aiState();
     const pref = !!S.aiSettings.autoOptimise;
     const sw = toggle(pref, (v) => onAiToggle(v), 'Automatically optimise protection for each site', st.disabled);
@@ -363,7 +389,7 @@
 
     const wrap = $('trackerList');
     if (!list.length) {
-      wrap.replaceChildren(h('div', { class: 'empty', text: all.length ? 'No domain matches.' : 'Nothing learned yet. Trackers that follow you between websites show up here.' }));
+      wrap.replaceChildren(h('div', { class: 'empty', text: all.length ? 'No domain matches.' : 'Nothing sniffed out yet. Trackers that follow you between websites show up here.' }));
       return;
     }
     const rows = list.slice(0, ui.trackerLimit).map(([domain, r]) => {
@@ -405,14 +431,21 @@
         }))))));
   }
 
+  const FIX_NEVER = 'Never on cookie notices, sign-in, payment, paywalls or anti-adblock messages, and never in Incognito or Light mode.';
   const FIX_MODE_TEXT = {
-    off: 'Off: Rockyweb only changes pages when you ask.',
-    suggest: 'Rockyweb notices things like a bar asking you to install an app, a video player floating over the text or a page that will not scroll, and suggests a fix in the toolbar. Nothing changes until you apply it.',
-    auto: 'Rockyweb applies the obvious fixes itself, and with automatic optimisation on asks the on-device AI about the less obvious ones. Each one is listed in the toolbar and can be switched off. Never on cookie notices, sign-in, payment, paywalls or anti-adblock messages.'
+    off: ['Off: Rockyweb only changes pages when you ask.', `Suggest lists fixes in the toolbar; automatic applies the obvious ones. ${FIX_NEVER}`],
+    suggest: ['Suggests fixes for common annoyances in the toolbar. Nothing changes until you apply one.',
+      `For example a bar asking you to install an app, a video player floating over the text, a tall header that follows you or a page that will not scroll. A fix you dismiss is not suggested again on that site for 30 days. ${FIX_NEVER}`],
+    auto: ['Applies the obvious fixes itself and lists each one in the toolbar.',
+      `With automatic optimisation on, the on-device AI is asked about the less obvious ones. Every fix can be switched off from the toolbar or under page changes. ${FIX_NEVER}`]
   };
 
   function renderPageAi() {
     const st = S.aiSettings || {};
+    $('pageEditsDescription').replaceChildren(infoText(
+      '"Describe a change" in the toolbar can also hide, unstick, resize and recolour parts of a page.',
+      'Only from a list of safe changes; the AI never writes code or CSS. You see the change on the page before you apply it. Every change is saved for that website, so you never have to ask twice, and listed in the toolbar and under page changes, where you can switch it off or delete it. Off: describe a change only changes settings.',
+      'letting AI change pages'));
     $('pageEditsToggle').replaceChildren(toggle(st.pageEdits !== false,
       (v) => act(A.SET_AI_PAGE_SETTINGS, { pageEdits: v }, v ? 'Described changes can edit pages' : 'Described changes only change settings'),
       'Let AI change pages, not only settings'));
@@ -420,7 +453,7 @@
     $('pageFixesButtons').replaceChildren(seg(
       [{ value: 'off', label: 'off' }, { value: 'suggest', label: 'suggest' }, { value: 'auto', label: 'automatic' }],
       mode, (v) => act(A.SET_AI_PAGE_SETTINGS, { pageFixes: v }, `page fixes: ${v === 'auto' ? 'automatic' : v}`), 'Page fixes', false, 'btns'));
-    $('pageFixesDescription').textContent = FIX_MODE_TEXT[mode];
+    $('pageFixesDescription').replaceChildren(infoText(FIX_MODE_TEXT[mode][0], FIX_MODE_TEXT[mode][1], 'page fixes'));
   }
 
   const EDIT_SOURCE = { described: 'you asked', suggested: 'suggested, you applied it', automatic: 'applied automatically' };
@@ -454,11 +487,15 @@
       stat('cookie popups', s.totalPopupsHandled),
       stat('ads blocked', s.totalAdsBlocked),
       stat('trackers stopped', s.totalTrackersRestricted));
+    renderSync();
     $('aboutPanel').replaceChildren(
       h('p', {}, 'rockyweb ', h('b', { text: `v${diag.version}` }),
         ` · ${Object.keys(S.siteProfiles).length} websites · ${Object.keys(S.learnedTrackers).length} domains seen · ${diag.dynamicRuleCount} rules built from your settings`),
-      h('p', { text: 'Everything stays in this browser. Rockyweb makes no network requests of its own, has no analytics and loads no remote code.' }),
-      h('p', { text: 'Named after Rocky the British cocker spaniel. Font: Lexend Deca, SIL Open Font License.' }),
+      h('p', { text: syncInfo.enabled
+        ? 'Rockyweb has no server, makes no network requests of its own, has no analytics and loads no remote code. With sync on, your settings, website modes and page changes also travel through Chrome sync.'
+        : 'Everything stays in this browser. Rockyweb makes no network requests of its own, has no analytics and loads no remote code.' }),
+      h('p', {}, 'Open source: ', h('a', { href: 'https://github.com/notfsx/rockyweb', target: '_blank', rel: 'noopener noreferrer', text: 'github.com/notfsx/rockyweb' })),
+      h('p', { text: 'Named after Rocky, a British cocker spaniel who loved his tennis ball, a good nap and his dinner. Font: Lexend Deca, SIL Open Font License.' }),
       h('p', { id: 'aiDiagnostics' }));
     send(A.GET_AI_STATUS).then((st) => {
       const el = $('aiDiagnostics');
@@ -466,6 +503,56 @@
       const words = { absent: 'not offered by this browser', unavailable: 'unavailable on this device', downloadable: 'not downloaded', downloading: 'downloading', available: 'ready', error: 'not responding' };
       el.textContent = `On-device AI in the background: ${words[st.availability] || st.availability} · ${st.stats.prompts} model call${st.stats.prompts === 1 ? '' : 's'} since Chrome started · ${st.hasSession ? 'session open' : 'no session open'}`;
     }).catch(() => {});
+  }
+
+  // ---- Chrome sync (opt-in, per device)
+  let syncInfo = { enabled: false };
+
+  function renderSync() {
+    const st = syncInfo;
+    $('syncDescription').replaceChildren(infoText(
+      'Keeps your settings, website modes and page changes the same in Chrome on your other computers. Off by default.',
+      'It uses Chrome sync, so it works when you are signed in to Chrome with sync on; otherwise the copy stays on this computer. What syncs leaves this device through Google’s Chrome sync and is kept with your Google Account’s sync data; Rockyweb itself has no server. Learned trackers, statistics, automatic adjustment memory, Light mode, automatic optimisation and any website you changed in an Incognito window stay on this device. Turn it on for each computer. The first time, websites from both sides are combined, the newer setting wins where both have the same website, and the general settings come from your other computers if they already sync. Chrome allows about 100 KB; if it fills up, the websites changed longest ago stay on their own device.',
+      'sync'));
+    const sw = toggle(!!st.enabled, (v) => setSync(v), 'Sync across your devices');
+    sw.setAttribute('aria-describedby', 'syncStatus');
+    $('syncToggle').replaceChildren(sw);
+    const kb = (n) => (n / 1024).toFixed(n < 10240 ? 1 : 0);
+    const bits = [];
+    if (!st.enabled) bits.push('Off. Everything stays on this device.');
+    else {
+      bits.push(st.lastSyncAt ? `On. Synced ${timeAgo(st.lastSyncAt)}, ${kb(st.bytes)} KB of ${kb(st.quota || 102400)} KB.` : 'On. Syncing…');
+      if (st.skipped) bits.push(`${st.skipped} website${st.skipped === 1 ? '' : 's'} left out: Chrome’s sync limit is full.`);
+      if (st.privateSites) bits.push(`${st.privateSites} website${st.privateSites === 1 ? '' : 's'} changed in Incognito stay${st.privateSites === 1 ? 's' : ''} on this device.`);
+      if (st.lastError) bits.push(`Could not sync just now (${st.lastError}); Rockyweb tries again in a minute.`);
+    }
+    const status = $('syncStatus');
+    status.textContent = bits.join(' ');
+    status.classList.toggle('warn', !!(st.enabled && st.lastError));
+    const actions = $('syncActions');
+    actions.replaceChildren(st.enabled ? h('button', { class: 'btn danger', type: 'button', text: 'remove the synced copy', onclick: clearSyncCopy }) : '');
+    actions.hidden = !st.enabled;
+  }
+
+  async function refreshSync() {
+    try { syncInfo = (await send(A.GET_SYNC_STATUS)).sync; } catch (_) { /* keep what we had */ }
+    if (S) renderSync();
+  }
+
+  async function setSync(enabled) {
+    try {
+      syncInfo = (await send(A.SET_SYNC, { enabled })).sync;
+      toast(enabled ? 'Sync is on for this device' : 'Sync is off for this device');
+    } catch (err) {
+      toast(errorText(err), true);
+    }
+    await load();
+  }
+
+  async function clearSyncCopy() {
+    if (!confirm('Remove Rockyweb’s copy from Chrome sync and turn sync off here? Your settings on this device stay. Turn sync off on your other computers first, or they will put the copy back.')) return;
+    try { syncInfo = (await send(A.CLEAR_SYNC_COPY)).sync; toast('Synced copy removed'); } catch (err) { toast(errorText(err), true); }
+    await load();
   }
 
   function renderAll() {
@@ -490,10 +577,18 @@
   $('siteSearch').addEventListener('input', (e) => { ui.siteQuery = e.target.value; renderWebsites(); });
   $('trackerSearch').addEventListener('input', (e) => { ui.trackerQuery = e.target.value; ui.trackerLimit = 200; renderTrackers(); });
 
+  const HINTS = [['addSiteInput', 'add a website, e.g. example.com', 'add a website'], ['selInput', 'css selector, e.g. .promo-banner', 'css selector']];
+  async function applyHints() {
+    for (const [id, full, short] of HINTS) $(id).placeholder = hintFor(await hintUses(id), full, short);
+  }
+  const usedHint = (id) => countHintUse(id).then(applyHints);
+  applyHints();
+
   $('addSiteForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const key = siteKeyFromInput($('addSiteInput').value);
     if (!key) { toast(errorText(new Error('invalid_site')), true); return; }
+    usedHint('addSiteInput');
     const tier = $('addSiteTier').value;
     act(A.SET_SITE_TIER, { siteKey: key, tier }, `${key}: ${MODE_LABEL[tier]}`);
     $('addSiteInput').value = '';
@@ -507,6 +602,7 @@
     let valid = RW.isValidSelector(sel);
     if (valid) { try { document.createDocumentFragment().querySelector(sel); } catch (_) { valid = false; } }
     if (!valid) { toast(errorText(new Error('invalid_selector')), true); return; }
+    usedHint('selInput');
     act(A.ADD_COSMETIC_SELECTOR, { siteKey: key, selector: sel }, `Hidden on ${key} after a reload`);
     $('selInput').value = '';
   });
@@ -556,6 +652,7 @@
   // Refresh when the popup or the learner changes storage.
   let refreshTimer = 0;
   chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.syncState) refreshSync();
     if (area !== 'local') return;
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(load, 400);

@@ -5,42 +5,60 @@
 
   // Ad networks, exchanges and ad servers, blocked in Balanced and Strict.
   const AD_DOMAINS = [
-    '2mdn.net', '33across.com', '360yield.com', 'a-ads.com', 'adcolony.com', 'adform.net',
-    'adformdsp.net', 'adgrx.com', 'adhigh.net', 'adition.com', 'adkernel.com', 'adnxs-simple.com',
-    'adnxs.com', 'adroll.com', 'adsafeprotected.com', 'adservice.google.com', 'adskeeper.co.uk',
-    'adsrvr.org', 'adsterra.com', 'adtechus.com', 'advertising.com', 'adzerk.net', 'amazon-adsystem.com',
-    'betweendigital.com', 'bidswitch.net', 'buysellads.com', 'carbonads.net', 'casalemedia.com',
-    'connatix.com', 'contextweb.com', 'criteo.com', 'criteo.net', 'districtm.io', 'doubleclick.net',
-    'emxdgt.com', 'exoclick.com', 'exosrv.com', 'googleadservices.com', 'googlesyndication.com',
-    'googletagservices.com', 'gumgum.com', 'hilltopads.net', 'improvedigital.com', 'indexww.com',
-    'juicyads.com', 'lijit.com', 'media.net', 'mgid.com', 'moatads.com', 'mookie1.com', 'onetag-sys.com',
-    'openx.net', 'outbrain.com', 'popads.net', 'popcash.net', 'propellerads.com', 'pubmatic.com',
-    'revcontent.com', 'richaudience.com', 'rubiconproject.com', 'seedtag.com', 'serving-sys.com',
-    'sharethrough.com', 'smaato.net', 'smartadserver.com', 'sonobi.com', 'springserve.com',
-    'spotx.tv', 'spotxchange.com', 'taboola.com', 'teads.tv', 'tremorhub.com', 'triplelift.com',
-    'undertone.com', 'yieldlab.net', 'yieldmo.com', 'zedo.com', 'zergnet.com'
+    '1rx.io', '2mdn.net', '33across.com', '360yield.com', '3lift.com', 'a-ads.com', 'a-mo.net',
+    'a-mx.com', 'ad-delivery.net', 'adcolony.com', 'adform.net', 'adformdsp.net', 'adfox.yandex.ru',
+    'adgrx.com', 'adhigh.net', 'adition.com', 'adkernel.com', 'adnxs-simple.com', 'adnxs.com',
+    'adroll.com', 'ads.tiktok.com', 'ads.youtube.com', 'adsafeprotected.com', 'adservice.google.com',
+    'adskeeper.co.uk', 'adsrvr.org', 'adsterra.com', 'adtechus.com', 'advertising.com', 'adzerk.net',
+    'amazon-adsystem.com', 'ay.delivery', 'betweendigital.com', 'bidswitch.net', 'brandmetrics.com',
+    'buysellads.com', 'carbonads.net', 'casalemedia.com', 'confiant-integrations.net', 'connatix.com',
+    'contextweb.com', 'creativecdn.com', 'criteo.com', 'criteo.net', 'districtm.io', 'doubleclick.net',
+    'doubleverify.com', 'dv.tech', 'emxdgt.com', 'exoclick.com', 'exosrv.com', 'googleadservices.com',
+    'googlesyndication.com', 'googletagservices.com', 'gumgum.com', 'hilltopads.net',
+    'improvedigital.com', 'indexww.com', 'intergi.com', 'intergient.com', 'juicyads.com', 'lijit.com',
+    'mantis-intelligence.com', 'media.net', 'mgid.com', 'moatads.com', 'mookie1.com',
+    'offerwall.yandex.net', 'onetag-sys.com', 'openx.net', 'outbrain.com', 'pbstck.com', 'playwire.com',
+    'popads.net', 'popcash.net', 'propellerads.com', 'pubmatic.com', 'rapidedge.io', 'revcontent.com',
+    'richaudience.com', 'rubiconproject.com', 'seedtag.com', 'serving-sys.com', 'sharethrough.com',
+    'smaato.net', 'smartadserver.com', 'sonobi.com', 'spotx.tv', 'spotxchange.com', 'springserve.com',
+    'stackadapt.com', 'taboola.com', 'teads.tv', 'the-ozone-project.com', 'tremorhub.com',
+    'triplelift.com', 'undertone.com', 'unityads.unity3d.com', 'unrulymedia.com',
+    'webcontentassessor.com', 'yieldlab.net', 'yieldmo.com', 'zedo.com', 'zergnet.com'
   ];
 
-  // Known cross-site analytics / data-broker endpoints, blocked in Balanced and Strict.
+  // Known cross-site analytics and data-broker endpoints, session recorders and ad conversion pixels,
+  // blocked in Balanced and Strict. Blocking them does not break pages.
   const TRACKER_DOMAINS = [
-    'agkn.com', 'bidr.io', 'bluekai.com', 'bounceexchange.com', 'chartbeat.com', 'chartbeat.net',
-    'crwdcntrl.net', 'cxense.com', 'demdex.net', 'dotomi.com', 'everesttech.net', 'exelator.com',
-    'eyeota.net', 'google-analytics.com', 'histats.com', 'id5-sync.com', 'intentiq.com', 'krxd.net',
-    'liadm.com', 'mathtag.com', 'mc.yandex.com', 'mc.yandex.ru', 'ml314.com', 'nr-data.net',
-    'omtrdc.net', 'permutive.com', 'pippio.com', 'quantcount.com', 'quantserve.com', 'rlcdn.com',
-    'scorecardresearch.com', 'statcounter.com', 'tapad.com', 'zeotap.com'
+    'adfstat.yandex.ru', 'ads-api.tiktok.com', 'ads-api.twitter.com', 'ads-sg.tiktok.com',
+    'ads-twitter.com', 'ads.linkedin.com', 'ads.pinterest.com', 'ads.yahoo.com', 'adtech.yahooinc.com',
+    'agkn.com', 'an.facebook.com', 'analytics-sg.tiktok.com', 'analytics.pinterest.com',
+    'analytics.pointdrive.linkedin.com', 'analytics.query.yahoo.com', 'analytics.tiktok.com',
+    'analytics.twitter.com', 'analytics.yahoo.com', 'anonm.io', 'anonymised.io', 'appmetrica.yandex.ru',
+    'bat.bing.com', 'bidr.io', 'bluekai.com', 'bounceexchange.com', 'business-api.tiktok.com',
+    'chartbeat.com', 'chartbeat.net', 'clarity.ms', 'click.googleanalytics.com', 'crazyegg.com',
+    'crwdcntrl.net', 'ct.pinterest.com', 'cxense.com', 'demdex.net', 'dotmetrics.net', 'dotomi.com',
+    'events.reddit.com', 'events.redditmedia.com', 'everesttech.net', 'exelator.com', 'eyeota.net',
+    'freshmarketer.com', 'fullstory.com', 'gemini.yahoo.com', 'gemius.pl', 'geo.yahoo.com',
+    'google-analytics.com', 'histats.com', 'hotjar.com', 'hotjar.io', 'hs-analytics.net',
+    'id5-sync.com', 'imrworldwide.com', 'inspectlet.com', 'intentiq.com', 'krxd.net', 'liadm.com',
+    'log.byteoversea.com', 'log.fc.yahoo.com', 'log.pinterest.com', 'luckyorange.com',
+    'luckyorange.net', 'mathtag.com', 'mc.yandex.com', 'mc.yandex.ru', 'metrika.yandex.ru', 'ml314.com',
+    'mouseflow.com', 'nr-data.net', 'omtrdc.net', 'opecloud.com', 'optable.co', 'parsely.com',
+    'partnerads.ysm.yahoo.com', 'permutive.app', 'permutive.com', 'pippio.com', 'pixel.facebook.com',
+    'prmutv.co', 'quantcount.com', 'quantserve.com', 'rlcdn.com', 'rqtrk.eu', 'sc-static.net',
+    'scorecardresearch.com', 'smartlook.com', 'snap.licdn.com', 'statcounter.com',
+    'static.ads-twitter.com', 'stats.wp.com', 'tapad.com', 'tr.snapchat.com', 'treasuredata.com',
+    'trk.pinterest.com', 'udc.yahoo.com', 'udcm.yahoo.com', 'zeotap.com', 'zi-scripts.com'
   ];
 
+  // Strict only: tag managers, social SDKs, product analytics, share widgets and pop-up tools,
+  // which some sites need to work.
   const STRICT_EXTRA_DOMAINS = [
-    'addthis.com', 'addtoany.com', 'ads-twitter.com', 'ads.linkedin.com', 'amplitude.com',
-    'analytics.tiktok.com', 'analytics.twitter.com', 'bat.bing.com', 'cdn.segment.com', 'clarity.ms',
-    'connect.facebook.net', 'crazyegg.com', 'ct.pinterest.com', 'fullstory.com', 'getsitecontrol.com',
-    'googletagmanager.com', 'heapanalytics.com', 'hellobar.com', 'hotjar.com', 'hotjar.io',
-    'inspectlet.com', 'justuno.com', 'luckyorange.com', 'luckyorange.net', 'mixpanel.com',
-    'mouseflow.com', 'mxpnl.com', 'onesignal.com', 'opmnstr.com', 'optinmonster.com', 'poptin.com',
-    'privy.com', 'pushcrew.com', 'pushengage.com', 'q.quora.com', 'sc-static.net', 'segment.io',
-    'sharethis.com', 'smartlook.com', 'snap.licdn.com', 'static.ads-twitter.com', 'subscribers.com',
-    'sumo.com', 'sumome.com', 'tr.snapchat.com', 'wisepops.com'
+    'addthis.com', 'addtoany.com', 'amplitude.com', 'cdn.segment.com', 'connect.facebook.net',
+    'getsitecontrol.com', 'googletagmanager.com', 'heapanalytics.com', 'hellobar.com', 'justuno.com',
+    'mixpanel.com', 'mxpnl.com', 'onesignal.com', 'opmnstr.com', 'optinmonster.com', 'poptin.com',
+    'privy.com', 'pushcrew.com', 'pushengage.com', 'q.quora.com', 'segment.io', 'sharethis.com',
+    'subscribers.com', 'sumo.com', 'sumome.com', 'wisepops.com'
   ];
 
   const URL_TRACKING_PARAMS = [

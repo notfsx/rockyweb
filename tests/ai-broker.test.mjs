@@ -104,21 +104,23 @@ test('session failures are not reused', async () => {
   assert.equal(b.stats.failures, 1);
 });
 
-test('a cold model that is slow to create times out without blocking the queue', async () => {
-  // Real Nano on a cold start took minutes for the first session; requests must stay bounded.
-  for (const ignoreSignal of [false, true]) {
-    const f = fakeLM({ createDelay: 150, ignoreSignal });
-    const b = RW.createAiBroker({ getLM: () => f.LM, promptTimeout: 40 });
-    const t0 = Date.now();
-    assert.deepEqual(await b.prompt({ key: 'a', prompt: 'x' }), { ok: false, reason: 'timeout' });
-    assert.ok(Date.now() - t0 < 120, 'bounded by the request timeout');
-    assert.equal(b.pending, 0, 'queue is free again');
-    assert.equal(b.hasSession, false);
-    assert.equal(b.stats.prompts, 0, 'no prompt was sent');
-    await sleep(200);
-    if (ignoreSignal) assert.equal(f.log.destroyed, 1, 'a session that arrives late is destroyed');
-    assert.equal(b.hasSession, false);
-  }
+test('a cold model that is slow to create times out without blocking the queue, and the load goes on', async () => {
+  // Real Nano on a cold start took up to 24 minutes for the first session; requests stay bounded,
+  // but creation is never cut short, since an aborted create() is thrown away.
+  const f = fakeLM({ createDelay: 150 });
+  const held = [];
+  const loads = [];
+  const b = RW.createAiBroker({ getLM: () => f.LM, promptTimeout: 40, hold: (p) => held.push(p), onLoad: (e) => loads.push(e) });
+  const t0 = Date.now();
+  assert.deepEqual(await b.prompt({ key: 'a', prompt: 'x' }), { ok: false, reason: 'timeout' });
+  assert.ok(Date.now() - t0 < 120, 'bounded by the request timeout');
+  assert.equal(b.pending, 0, 'queue is free again');
+  assert.equal(b.stats.prompts, 0, 'no prompt was sent');
+  assert.equal(held.length, 1, 'the caller was told a load is going');
+  await sleep(200);
+  assert.equal(f.log.destroyed, 0, 'the late session is kept');
+  assert.equal(b.hasSession, true);
+  assert.ok(loads.some((e) => typeof e.readyMs === 'number'));
 });
 
 test('cancelling during session creation frees the queue', async () => {
@@ -134,7 +136,7 @@ test('cancelling during session creation frees the queue', async () => {
   assert.equal((await b2.prompt({ key: 'b', prompt: 'y' })).ok, true);
 });
 
-test('after a creation timeout, requests are answered at once for the backoff, then one new load', async () => {
+test('after a creation timeout, requests are answered at once while the load goes on, with no second load', async () => {
   let clock = 1000;
   const f = fakeLM({ createDelay: 150 });
   const b = RW.createAiBroker({ getLM: () => f.LM, promptTimeout: 40, coldBackoff: 60000, now: () => clock });
@@ -143,13 +145,14 @@ test('after a creation timeout, requests are answered at once for the backoff, t
   const t0 = Date.now();
   assert.deepEqual(await b.prompt({ key: 'b', prompt: 'x' }), { ok: false, reason: 'model_warming' });
   assert.ok(Date.now() - t0 < 20, 'answered at once');
-  assert.equal(f.log.createCalls, 1, 'no second load during the backoff');
   assert.equal(f.log.availabilityCalls, 1, 'no availability check either');
-  assert.equal(b.stats.warming, 1);
   clock += 60001;
+  assert.deepEqual(await b.prompt({ key: 'c', prompt: 'x' }), { ok: false, reason: 'model_warming' }, 'still loading after the backoff');
+  assert.equal(f.log.createCalls, 1, 'no second load');
+  await sleep(200);
+  assert.equal((await b.prompt({ key: 'd', prompt: 'x' })).ok, true);
+  assert.equal(f.log.createCalls, 1, 'the first load is used');
   assert.equal(b.warming, false);
-  await b.prompt({ key: 'c', prompt: 'x' });
-  assert.equal(f.log.createCalls, 2, 'one new attempt after the backoff');
 });
 
 test('a prompt timeout on a warm session does not start the backoff', async () => {
@@ -178,17 +181,64 @@ test('a session created quickly whose first prompt times out (model loading) sta
   assert.equal(b.warming, false);
 });
 
-test('a cold model that eventually loads is used once the backoff ends', async () => {
-  let clock = 0;
-  const slow = fakeLM({ createDelay: 150 });
-  const ready = fakeLM();
-  let lm = slow.LM;
-  const b = RW.createAiBroker({ getLM: () => lm, promptTimeout: 40, now: () => clock });
+test('a load that finishes during the backoff is used at once', async () => {
+  const clock = 0;
+  const f = fakeLM({ createDelay: 150 });
+  const loads = [];
+  const b = RW.createAiBroker({ getLM: () => f.LM, promptTimeout: 40, now: () => clock, onLoad: (e) => loads.push(e) });
   assert.equal((await b.prompt({ key: 'a', prompt: 'x' })).reason, 'timeout');
-  lm = ready.LM; // Chrome finished loading meanwhile
-  assert.equal((await b.prompt({ key: 'b', prompt: 'x' })).reason, 'model_warming');
-  assert.equal(ready.log.createCalls || 0, 0);
-  clock += 60001;
-  assert.equal((await b.prompt({ key: 'c', prompt: 'x' })).ok, true);
-  assert.equal(ready.log.created, 1);
+  await sleep(200);
+  assert.equal(b.warming, false, 'a ready session ends the backoff');
+  assert.equal((await b.prompt({ key: 'b', prompt: 'x' })).ok, true);
+  assert.equal(f.log.created, 1);
+  assert.ok(loads.some((e) => e.answered), 'the first answer is reported');
+
+});
+
+test('warm() gets a session ready without a prompt, and is quick once warm', async () => {
+  const f = fakeLM({ createDelay: 30 });
+  const b = RW.createAiBroker({ getLM: () => f.LM });
+  const r = await b.warm();
+  assert.equal(r.ok, true);
+  assert.equal(f.log.prompts, 0);
+  assert.equal(b.hasSession, true);
+  assert.equal((await b.warm()).ok, true);
+  assert.equal(f.log.createCalls, 1, 'one session');
+  const none = RW.createAiBroker({ getLM: () => fakeLM({ availability: 'downloadable' }).LM });
+  assert.deepEqual(await none.warm(), { ok: false, reason: 'model_downloadable' });
+  b.release();
+});
+
+test('warm(keepMs) keeps the session past the idle release, then lets it go', async () => {
+  let clock = 0;
+  const f = fakeLM();
+  const b = RW.createAiBroker({ getLM: () => f.LM, idleRelease: 30, now: () => clock });
+  assert.equal((await b.warm(100)).ok, true);
+  assert.equal(b.keptUntil, 100);
+  await sleep(60);
+  assert.equal(b.hasSession, true, 'kept beyond the idle release');
+  clock = 200;
+  assert.equal((await b.prompt({ key: 'a', prompt: 'x' })).ok, true);
+  await sleep(60);
+  assert.equal(b.hasSession, false, 'released once the keep time has passed');
+});
+
+test('a kept session asks one tiny question now and then, and stops once the keep ends', async () => {
+  let clock = 0;
+  const f = fakeLM();
+  const b = RW.createAiBroker({ getLM: () => f.LM, idleRelease: 20, touchEvery: 30, now: () => clock });
+  assert.equal((await b.warm(100)).ok, true);
+  // Wait for the first touch (timers run late when the machine is busy).
+  for (let i = 0; i < 50 && !b.stats.touches; i++) await sleep(10);
+  assert.equal(b.stats.touches >= 1, true, 'a touch after touchEvery');
+  assert.equal(f.log.cloned, 1, 'on a clone, never the kept session itself');
+  clock = 200;
+  await sleep(80);
+  assert.equal(b.stats.touches <= 2, true, 'no more touches once the keep has passed');
+  b.release();
+  const plain = fakeLM();
+  const p = RW.createAiBroker({ getLM: () => plain.LM, idleRelease: 20, touchEvery: 10 });
+  await p.prompt({ key: 'a', prompt: 'x' });
+  await sleep(40);
+  assert.equal(p.stats.touches, 0, 'nothing kept, nothing asked');
 });

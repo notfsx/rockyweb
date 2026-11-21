@@ -178,12 +178,14 @@
       customCosmeticSelectors: sanitizeSelectors(src.customCosmeticSelectors),
       newsletterPrompts: NEWSLETTER_CHOICES.includes(src.newsletterPrompts) ? src.newsletterPrompts : 'auto',
       cookieBannerAi: COOKIE_AI_CHOICES.includes(src.cookieBannerAi) ? src.cookieBannerAi : 'auto',
-      pageFixes: PAGE_FIX_SITE_CHOICES.includes(src.pageFixes) ? src.pageFixes : 'auto'
+      pageFixes: PAGE_FIX_SITE_CHOICES.includes(src.pageFixes) ? src.pageFixes : 'auto',
+      // Changed from an Incognito window: kept on this device, never synced.
+      private: src.private === true
     };
   }
 
   function isProfileEmpty(p) {
-    return !p || (!p.tier &&
+    return !p || (!p.tier && !p.private &&
       Object.keys(p.domainSliderOverrides || {}).length === 0 &&
       (p.customCosmeticSelectors || []).length === 0 &&
       (!p.newsletterPrompts || p.newsletterPrompts === 'auto') &&
@@ -616,6 +618,11 @@
     return Object.assign({}, state, { aiSettings: next });
   }
 
+  // A site changed from an Incognito window stays on this device: it is never synced.
+  function markSitePrivate(state, siteKey) {
+    return withProfile(state, siteKey, (p) => { p.private = true; return p; }, (state.siteProfiles[RW.siteKeyForHost(siteKey)] || {}).updatedAt || Date.now());
+  }
+
   function setSitePageFixes(state, siteKey, value, now) {
     if (!PAGE_FIX_SITE_CHOICES.includes(value)) throw new Error('invalid_value');
     return withProfile(state, siteKey, (p) => { p.pageFixes = value; return p; }, now);
@@ -799,6 +806,7 @@
     setAiAutoOptimise,
     setAiPageSettings,
     setSitePageFixes,
+    markSitePrivate,
     sanitizeAiSettings,
     savePageEdit,
     setPageEditEnabled,

@@ -109,7 +109,8 @@
       ops,
       settings,
       enabled: raw.enabled !== false,
-      createdAt: finite(raw.createdAt, 0)
+      createdAt: finite(raw.createdAt, 0),
+      updatedAt: finite(raw.updatedAt, finite(raw.createdAt, 0))
     };
   }
 

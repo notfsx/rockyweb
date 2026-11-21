@@ -144,11 +144,11 @@
     let host = null;
     let timer = 0;
     const STYLE = `
-      :host { all: initial; }
+      :host { all: initial; --fs-xs: 11px; --fs-m: 13px; } /* same steps as ui/tokens.css */
       .t { position: fixed; right: 16px; bottom: 16px; z-index: 2147483647; display: flex; align-items: baseline; gap: 10px;
         max-width: min(380px, calc(100vw - 32px)); padding: 9px 14px; border-radius: 10px;
         background: #17120E; color: #F3E9DC; border: 1px solid rgba(196,173,150,.12);
-        box-shadow: 0 6px 20px rgba(0,0,0,.28); font: 400 12.5px/1.35 ${FONT}; letter-spacing: -0.005em;
+        box-shadow: 0 6px 20px rgba(0,0,0,.28); font: 400 var(--fs-m)/1.35 ${FONT}; letter-spacing: -0.005em;
         pointer-events: none; animation: in .2s cubic-bezier(.2,.8,.2,1) both; }
       .t.out { animation: out .2s ease forwards; }
       .w { flex: none; color: #E0975A; font-weight: 500; letter-spacing: -0.01em; }
@@ -1096,16 +1096,16 @@
 
   const Picker = (() => {
     const STYLE = `
-      :host { all: initial; }
+      :host { all: initial; --fs-xs: 11px; --fs-m: 13px; } /* same steps as ui/tokens.css */
       .box { position: fixed; z-index: 2147483646; pointer-events: none; display: none; border-radius: 4px;
         border: 2px solid #E0975A; background: rgba(224,151,90,.16); transition: all .05s ease-out; }
       .tag { position: fixed; z-index: 2147483647; pointer-events: none; display: none; max-width: 60vw;
         padding: 3px 7px; border-radius: 6px; background: #E0975A; color: #1F1914;
-        font: 500 11px/1.3 ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        font: 500 var(--fs-xs)/1.3 ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .bar { position: fixed; z-index: 2147483647; left: 50%; bottom: 18px; transform: translateX(-50%);
         display: flex; align-items: center; gap: 6px; padding: 7px 7px 7px 14px; border-radius: 12px;
         background: rgba(31,25,20,.97); border: 1px solid rgba(196,173,150,.18); color: #F3E9DC;
-        box-shadow: 0 16px 40px rgba(0,0,0,.45); font: 400 12.5px/1.3 ${FONT}; pointer-events: auto; white-space: nowrap; }
+        box-shadow: 0 16px 40px rgba(0,0,0,.45); font: 400 var(--fs-m)/1.3 ${FONT}; pointer-events: auto; white-space: nowrap; }
       .hint { color: rgba(196,173,150,.9); }
       .hint b { color: #F3E9DC; font-weight: 500; }
       .count { color: #E0975A; padding: 0 4px; }

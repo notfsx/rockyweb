@@ -37,16 +37,25 @@
     const systemPrompt = o.systemPrompt || RW.AI_SYSTEM_PROMPT;
     // availability() and create() always use the same options, including the input languages.
     const modelOptions = o.modelOptions || RW.AI_MODEL_OPTIONS;
+    // Called with a session creation that is still going, so the caller can keep the worker alive.
+    const hold = o.hold || (() => {});
+    // Told when a session is ready and when it first answers, for the popup's loading note.
+    const onLoad = o.onLoad || (() => {});
 
     let base = null;
     let basePromise = null;
     let idleTimer = 0;
     let running = false;
     let coldUntil = 0;
+    let keepUntil = 0; // the session is kept at least until then (see warm)
+    // Chrome unloaded the model about 5 minutes after its last answer even with a session open
+    // (measured), so a kept session asks one tiny question this often while it is kept.
+    const TOUCH_EVERY = o.touchEvery || 4 * 60000;
+    let touchTimer = 0;
     let proven = false; // the current session has answered at least once
     const queue = [];
     const inflight = new Map();
-    const stats = { prompts: 0, sessionsCreated: 0, sessionsDestroyed: 0, failures: 0, timeouts: 0, cancelled: 0, invalid: 0, deduplicated: 0, warming: 0 };
+    const stats = { prompts: 0, sessionsCreated: 0, sessionsDestroyed: 0, failures: 0, timeouts: 0, cancelled: 0, invalid: 0, deduplicated: 0, warming: 0, touches: 0 };
 
     async function availability() {
       const LM = getLM();
@@ -62,6 +71,9 @@
     function release() {
       clearTimeout(idleTimer);
       idleTimer = 0;
+      clearTimeout(touchTimer);
+      touchTimer = 0;
+      keepUntil = 0;
       if (base) {
         try { base.destroy(); } catch (_) { /* already gone */ }
         stats.sessionsDestroyed++;
@@ -71,38 +83,55 @@
 
     function scheduleRelease() {
       clearTimeout(idleTimer);
-      idleTimer = unref(setTimeout(release, IDLE_RELEASE));
+      idleTimer = unref(setTimeout(release, Math.max(IDLE_RELEASE, keepUntil - now())));
+      scheduleTouch();
     }
 
-    // Creation is bounded by the running request's timeout and cancellation: a cold model can take
-    // minutes to load, and Chrome keeps loading it after an abort, so a later request finds it ready.
+    function scheduleTouch() {
+      clearTimeout(touchTimer);
+      touchTimer = 0;
+      if (base && keepUntil - now() > TOUCH_EVERY / 2) touchTimer = unref(setTimeout(touch, TOUCH_EVERY));
+    }
+
+    async function touch() {
+      touchTimer = 0;
+      if (!base || running || now() >= keepUntil) return;
+      let c = null;
+      try {
+        c = typeof base.clone === 'function' ? await base.clone() : null;
+        if (c) { await withTimeout(c.prompt('Reply with OK.'), 20000); stats.touches++; }
+      } catch (_) { /* the next real request finds out */ }
+      if (c) { try { c.destroy(); } catch (_) { /* ignore */ } }
+      scheduleTouch();
+    }
+
+    // A request waits for creation only as long as its own timeout, but creation itself is never cut
+    // short: an aborted create() destroys the session, and the next one starts Chrome's slow first
+    // load again (measured: 13 cut-off tries in 25 minutes, none finished). A late session is kept.
     function session(signal) {
       if (base) return Promise.resolve(base);
       if (!basePromise) {
-        basePromise = (async () => {
-          const created = RW.aiCreate(getLM(), {
-            initialPrompts: [{ role: 'system', content: systemPrompt }],
-            signal
-          }, modelOptions);
-          let s;
-          try {
-            s = await untilAborted(created, signal);
-          } catch (err) {
-            created.then((late) => { try { late.destroy(); } catch (_) { /* ignore */ } }, () => {});
-            throw err;
-          }
-          stats.sessionsCreated++;
-          base = s;
-          proven = false;
-          return s;
-        })().finally(() => { basePromise = null; });
+        const startedAt = now();
+        basePromise = RW.aiCreate(getLM(), { initialPrompts: [{ role: 'system', content: systemPrompt }] }, modelOptions)
+          .then((s) => {
+            stats.sessionsCreated++;
+            base = s;
+            proven = false;
+            coldUntil = 0;
+            onLoad({ readyMs: now() - startedAt });
+            scheduleRelease();
+            return s;
+          })
+          .finally(() => { basePromise = null; });
+        basePromise.catch(() => {});
+        hold(basePromise);
       }
       return untilAborted(basePromise, signal);
     }
 
     async function run(job) {
       if (job.signal && job.signal.aborted) { stats.cancelled++; return { ok: false, reason: 'cancelled' }; }
-      if ((!base || !proven) && now() < coldUntil) { stats.warming++; return { ok: false, reason: 'model_warming' }; }
+      if ((!base || !proven) && (now() < coldUntil || (basePromise && coldUntil))) { stats.warming++; return { ok: false, reason: 'model_warming' }; }
       const avail = await availability();
       if (avail !== 'available') { release(); return { ok: false, reason: `model_${avail}` }; }
       const ctrl = new AbortController();
@@ -118,6 +147,7 @@
         child = typeof s.clone === 'function' ? await s.clone({ signal: ctrl.signal }) : s;
         stats.prompts++;
         const text = await child.prompt(job.prompt, { responseConstraint: job.schema, signal: ctrl.signal });
+        if (!proven) onLoad({ answered: true });
         proven = true;
         return { ok: true, text: typeof text === 'string' ? text : String(text) };
       } catch (_) {
@@ -173,14 +203,30 @@
       for (const j of queue.splice(0)) { stats.cancelled++; j.resolve({ ok: false, reason: 'cancelled' }); }
     }
 
+    // Gets the model ready without asking anything; resolves when the session exists. keepMs keeps
+    // the session that long: Chrome unloads the model once no session is left, and loading it
+    // again took minutes on the test laptop.
+    async function warm(keepMs) {
+      if (keepMs) { keepUntil = Math.max(keepUntil, now() + keepMs); if (base) scheduleRelease(); }
+      const avail = await availability();
+      if (avail !== 'available') return { ok: false, reason: `model_${avail}` };
+      const t = now();
+      try { await session(null); } catch (_) { stats.failures++; return { ok: false, reason: 'session_error' }; }
+      // Counted from when the model is ready, since the load itself can take minutes.
+      if (keepMs) { keepUntil = Math.max(keepUntil, now() + keepMs); scheduleRelease(); }
+      return { ok: true, ms: now() - t };
+    }
+
     return {
       availability,
       prompt,
+      warm,
       release,
       cancelQueued,
       stats,
       get hasSession() { return !!base; },
       get warming() { return now() < coldUntil; },
+      get keptUntil() { return keepUntil; },
       get pending() { return queue.length + (running ? 1 : 0); }
     };
   }

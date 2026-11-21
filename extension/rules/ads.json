@@ -7,7 +7,7 @@
     },
     "condition": {
       "requestDomains": [
-        "2mdn.net"
+        "1rx.io"
       ],
       "domainType": "thirdParty"
     }
@@ -20,7 +20,7 @@
     },
     "condition": {
       "requestDomains": [
-        "33across.com"
+        "2mdn.net"
       ],
       "domainType": "thirdParty"
     }
@@ -33,7 +33,7 @@
     },
     "condition": {
       "requestDomains": [
-        "360yield.com"
+        "33across.com"
       ],
       "domainType": "thirdParty"
     }
@@ -46,7 +46,7 @@
     },
     "condition": {
       "requestDomains": [
-        "a-ads.com"
+        "360yield.com"
       ],
       "domainType": "thirdParty"
     }
@@ -59,7 +59,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adcolony.com"
+        "3lift.com"
       ],
       "domainType": "thirdParty"
     }
@@ -72,7 +72,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adform.net"
+        "a-ads.com"
       ],
       "domainType": "thirdParty"
     }
@@ -85,7 +85,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adformdsp.net"
+        "a-mo.net"
       ],
       "domainType": "thirdParty"
     }
@@ -98,7 +98,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adgrx.com"
+        "a-mx.com"
       ],
       "domainType": "thirdParty"
     }
@@ -111,7 +111,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adhigh.net"
+        "ad-delivery.net"
       ],
       "domainType": "thirdParty"
     }
@@ -124,7 +124,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adition.com"
+        "adcolony.com"
       ],
       "domainType": "thirdParty"
     }
@@ -137,7 +137,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adkernel.com"
+        "adform.net"
       ],
       "domainType": "thirdParty"
     }
@@ -150,7 +150,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adnxs-simple.com"
+        "adformdsp.net"
       ],
       "domainType": "thirdParty"
     }
@@ -163,7 +163,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adnxs.com"
+        "adfox.yandex.ru"
       ],
       "domainType": "thirdParty"
     }
@@ -176,7 +176,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adroll.com"
+        "adgrx.com"
       ],
       "domainType": "thirdParty"
     }
@@ -189,7 +189,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adsafeprotected.com"
+        "adhigh.net"
       ],
       "domainType": "thirdParty"
     }
@@ -202,7 +202,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adservice.google.com"
+        "adition.com"
       ],
       "domainType": "thirdParty"
     }
@@ -215,7 +215,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adskeeper.co.uk"
+        "adkernel.com"
       ],
       "domainType": "thirdParty"
     }
@@ -228,7 +228,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adsrvr.org"
+        "adnxs-simple.com"
       ],
       "domainType": "thirdParty"
     }
@@ -241,7 +241,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adsterra.com"
+        "adnxs.com"
       ],
       "domainType": "thirdParty"
     }
@@ -254,7 +254,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adtechus.com"
+        "adroll.com"
       ],
       "domainType": "thirdParty"
     }
@@ -267,7 +267,7 @@
     },
     "condition": {
       "requestDomains": [
-        "advertising.com"
+        "ads.tiktok.com"
       ],
       "domainType": "thirdParty"
     }
@@ -280,7 +280,7 @@
     },
     "condition": {
       "requestDomains": [
-        "adzerk.net"
+        "ads.youtube.com"
       ],
       "domainType": "thirdParty"
     }
@@ -293,7 +293,7 @@
     },
     "condition": {
       "requestDomains": [
-        "amazon-adsystem.com"
+        "adsafeprotected.com"
       ],
       "domainType": "thirdParty"
     }
@@ -306,7 +306,7 @@
     },
     "condition": {
       "requestDomains": [
-        "betweendigital.com"
+        "adservice.google.com"
       ],
       "domainType": "thirdParty"
     }
@@ -319,7 +319,7 @@
     },
     "condition": {
       "requestDomains": [
-        "bidswitch.net"
+        "adskeeper.co.uk"
       ],
       "domainType": "thirdParty"
     }
@@ -332,7 +332,7 @@
     },
     "condition": {
       "requestDomains": [
-        "buysellads.com"
+        "adsrvr.org"
       ],
       "domainType": "thirdParty"
     }
@@ -345,7 +345,7 @@
     },
     "condition": {
       "requestDomains": [
-        "carbonads.net"
+        "adsterra.com"
       ],
       "domainType": "thirdParty"
     }
@@ -358,7 +358,7 @@
     },
     "condition": {
       "requestDomains": [
-        "casalemedia.com"
+        "adtechus.com"
       ],
       "domainType": "thirdParty"
     }
@@ -371,7 +371,7 @@
     },
     "condition": {
       "requestDomains": [
-        "connatix.com"
+        "advertising.com"
       ],
       "domainType": "thirdParty"
     }
@@ -384,7 +384,7 @@
     },
     "condition": {
       "requestDomains": [
-        "contextweb.com"
+        "adzerk.net"
       ],
       "domainType": "thirdParty"
     }
@@ -397,7 +397,7 @@
     },
     "condition": {
       "requestDomains": [
-        "criteo.com"
+        "amazon-adsystem.com"
       ],
       "domainType": "thirdParty"
     }
@@ -410,7 +410,7 @@
     },
     "condition": {
       "requestDomains": [
-        "criteo.net"
+        "ay.delivery"
       ],
       "domainType": "thirdParty"
     }
@@ -423,7 +423,7 @@
     },
     "condition": {
       "requestDomains": [
-        "districtm.io"
+        "betweendigital.com"
       ],
       "domainType": "thirdParty"
     }
@@ -436,7 +436,7 @@
     },
     "condition": {
       "requestDomains": [
-        "doubleclick.net"
+        "bidswitch.net"
       ],
       "domainType": "thirdParty"
     }
@@ -449,7 +449,7 @@
     },
     "condition": {
       "requestDomains": [
-        "emxdgt.com"
+        "brandmetrics.com"
       ],
       "domainType": "thirdParty"
     }
@@ -462,7 +462,7 @@
     },
     "condition": {
       "requestDomains": [
-        "exoclick.com"
+        "buysellads.com"
       ],
       "domainType": "thirdParty"
     }
@@ -475,7 +475,7 @@
     },
     "condition": {
       "requestDomains": [
-        "exosrv.com"
+        "carbonads.net"
       ],
       "domainType": "thirdParty"
     }
@@ -488,7 +488,7 @@
     },
     "condition": {
       "requestDomains": [
-        "googleadservices.com"
+        "casalemedia.com"
       ],
       "domainType": "thirdParty"
     }
@@ -501,7 +501,7 @@
     },
     "condition": {
       "requestDomains": [
-        "googlesyndication.com"
+        "confiant-integrations.net"
       ],
       "domainType": "thirdParty"
     }
@@ -514,7 +514,7 @@
     },
     "condition": {
       "requestDomains": [
-        "googletagservices.com"
+        "connatix.com"
       ],
       "domainType": "thirdParty"
     }
@@ -527,7 +527,7 @@
     },
     "condition": {
       "requestDomains": [
-        "gumgum.com"
+        "contextweb.com"
       ],
       "domainType": "thirdParty"
     }
@@ -540,7 +540,7 @@
     },
     "condition": {
       "requestDomains": [
-        "hilltopads.net"
+        "creativecdn.com"
       ],
       "domainType": "thirdParty"
     }
@@ -553,7 +553,7 @@
     },
     "condition": {
       "requestDomains": [
-        "improvedigital.com"
+        "criteo.com"
       ],
       "domainType": "thirdParty"
     }
@@ -566,7 +566,7 @@
     },
     "condition": {
       "requestDomains": [
-        "indexww.com"
+        "criteo.net"
       ],
       "domainType": "thirdParty"
     }
@@ -579,7 +579,7 @@
     },
     "condition": {
       "requestDomains": [
-        "juicyads.com"
+        "districtm.io"
       ],
       "domainType": "thirdParty"
     }
@@ -592,7 +592,7 @@
     },
     "condition": {
       "requestDomains": [
-        "lijit.com"
+        "doubleclick.net"
       ],
       "domainType": "thirdParty"
     }
@@ -605,7 +605,7 @@
     },
     "condition": {
       "requestDomains": [
-        "media.net"
+        "doubleverify.com"
       ],
       "domainType": "thirdParty"
     }
@@ -618,7 +618,7 @@
     },
     "condition": {
       "requestDomains": [
-        "mgid.com"
+        "dv.tech"
       ],
       "domainType": "thirdParty"
     }
@@ -631,7 +631,7 @@
     },
     "condition": {
       "requestDomains": [
-        "moatads.com"
+        "emxdgt.com"
       ],
       "domainType": "thirdParty"
     }
@@ -644,7 +644,7 @@
     },
     "condition": {
       "requestDomains": [
-        "mookie1.com"
+        "exoclick.com"
       ],
       "domainType": "thirdParty"
     }
@@ -657,7 +657,7 @@
     },
     "condition": {
       "requestDomains": [
-        "onetag-sys.com"
+        "exosrv.com"
       ],
       "domainType": "thirdParty"
     }
@@ -670,7 +670,7 @@
     },
     "condition": {
       "requestDomains": [
-        "openx.net"
+        "googleadservices.com"
       ],
       "domainType": "thirdParty"
     }
@@ -683,7 +683,7 @@
     },
     "condition": {
       "requestDomains": [
-        "outbrain.com"
+        "googlesyndication.com"
       ],
       "domainType": "thirdParty"
     }
@@ -696,7 +696,7 @@
     },
     "condition": {
       "requestDomains": [
-        "popads.net"
+        "googletagservices.com"
       ],
       "domainType": "thirdParty"
     }
@@ -709,7 +709,7 @@
     },
     "condition": {
       "requestDomains": [
-        "popcash.net"
+        "gumgum.com"
       ],
       "domainType": "thirdParty"
     }
@@ -722,7 +722,7 @@
     },
     "condition": {
       "requestDomains": [
-        "propellerads.com"
+        "hilltopads.net"
       ],
       "domainType": "thirdParty"
     }
@@ -735,7 +735,7 @@
     },
     "condition": {
       "requestDomains": [
-        "pubmatic.com"
+        "improvedigital.com"
       ],
       "domainType": "thirdParty"
     }
@@ -748,7 +748,7 @@
     },
     "condition": {
       "requestDomains": [
-        "revcontent.com"
+        "indexww.com"
       ],
       "domainType": "thirdParty"
     }
@@ -761,7 +761,7 @@
     },
     "condition": {
       "requestDomains": [
-        "richaudience.com"
+        "intergi.com"
       ],
       "domainType": "thirdParty"
     }
@@ -774,7 +774,7 @@
     },
     "condition": {
       "requestDomains": [
-        "rubiconproject.com"
+        "intergient.com"
       ],
       "domainType": "thirdParty"
     }
@@ -787,7 +787,7 @@
     },
     "condition": {
       "requestDomains": [
-        "seedtag.com"
+        "juicyads.com"
       ],
       "domainType": "thirdParty"
     }
@@ -800,7 +800,7 @@
     },
     "condition": {
       "requestDomains": [
-        "serving-sys.com"
+        "lijit.com"
       ],
       "domainType": "thirdParty"
     }
@@ -813,7 +813,7 @@
     },
     "condition": {
       "requestDomains": [
-        "sharethrough.com"
+        "mantis-intelligence.com"
       ],
       "domainType": "thirdParty"
     }
@@ -826,7 +826,7 @@
     },
     "condition": {
       "requestDomains": [
-        "smaato.net"
+        "media.net"
       ],
       "domainType": "thirdParty"
     }
@@ -839,7 +839,7 @@
     },
     "condition": {
       "requestDomains": [
-        "smartadserver.com"
+        "mgid.com"
       ],
       "domainType": "thirdParty"
     }
@@ -852,7 +852,7 @@
     },
     "condition": {
       "requestDomains": [
-        "sonobi.com"
+        "moatads.com"
       ],
       "domainType": "thirdParty"
     }
@@ -865,7 +865,7 @@
     },
     "condition": {
       "requestDomains": [
-        "spotx.tv"
+        "mookie1.com"
       ],
       "domainType": "thirdParty"
     }
@@ -878,7 +878,7 @@
     },
     "condition": {
       "requestDomains": [
-        "spotxchange.com"
+        "offerwall.yandex.net"
       ],
       "domainType": "thirdParty"
     }
@@ -891,7 +891,7 @@
     },
     "condition": {
       "requestDomains": [
-        "springserve.com"
+        "onetag-sys.com"
       ],
       "domainType": "thirdParty"
     }
@@ -904,7 +904,7 @@
     },
     "condition": {
       "requestDomains": [
-        "taboola.com"
+        "openx.net"
       ],
       "domainType": "thirdParty"
     }
@@ -917,7 +917,7 @@
     },
     "condition": {
       "requestDomains": [
-        "teads.tv"
+        "outbrain.com"
       ],
       "domainType": "thirdParty"
     }
@@ -930,7 +930,7 @@
     },
     "condition": {
       "requestDomains": [
-        "tremorhub.com"
+        "pbstck.com"
       ],
       "domainType": "thirdParty"
     }
@@ -943,7 +943,7 @@
     },
     "condition": {
       "requestDomains": [
-        "triplelift.com"
+        "playwire.com"
       ],
       "domainType": "thirdParty"
     }
@@ -956,7 +956,7 @@
     },
     "condition": {
       "requestDomains": [
-        "undertone.com"
+        "popads.net"
       ],
       "domainType": "thirdParty"
     }
@@ -969,7 +969,7 @@
     },
     "condition": {
       "requestDomains": [
-        "yieldlab.net"
+        "popcash.net"
       ],
       "domainType": "thirdParty"
     }
@@ -982,7 +982,7 @@
     },
     "condition": {
       "requestDomains": [
-        "yieldmo.com"
+        "propellerads.com"
       ],
       "domainType": "thirdParty"
     }
@@ -995,7 +995,7 @@
     },
     "condition": {
       "requestDomains": [
-        "zedo.com"
+        "pubmatic.com"
       ],
       "domainType": "thirdParty"
     }
@@ -1008,13 +1008,351 @@
     },
     "condition": {
       "requestDomains": [
-        "zergnet.com"
+        "rapidedge.io"
       ],
       "domainType": "thirdParty"
     }
   },
   {
     "id": 79,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "revcontent.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 80,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "richaudience.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 81,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "rubiconproject.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 82,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "seedtag.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 83,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "serving-sys.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 84,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "sharethrough.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 85,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "smaato.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 86,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "smartadserver.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 87,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "sonobi.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 88,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "spotx.tv"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 89,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "spotxchange.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 90,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "springserve.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 91,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "stackadapt.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 92,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "taboola.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 93,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "teads.tv"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 94,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "the-ozone-project.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 95,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "tremorhub.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 96,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "triplelift.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 97,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "undertone.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 98,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "unityads.unity3d.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 99,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "unrulymedia.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 100,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "webcontentassessor.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 101,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "yieldlab.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 102,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "yieldmo.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 103,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "zedo.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 104,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "zergnet.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 105,
     "priority": 2,
     "action": {
       "type": "redirect",
@@ -1031,7 +1369,7 @@
     }
   },
   {
-    "id": 80,
+    "id": 106,
     "priority": 2,
     "action": {
       "type": "redirect",
@@ -1048,7 +1386,7 @@
     }
   },
   {
-    "id": 81,
+    "id": 107,
     "priority": 2,
     "action": {
       "type": "redirect",

@@ -177,8 +177,22 @@ for (const p of shipped) {
     if (/\beval\(|new Function\(/.test(src)) fail(`${rel}: dynamic code evaluation`);
   }
   if (/[\u2013\u2014]/.test(src)) fail(`${rel}: contains an en or em dash`);
+  if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(src)) fail(`${rel}: contains a control character (a lost escape?)`);
 }
 notes.push(`${shipped.length} shipped files scanned`);
+
+// Every CSS variable used without a fallback is defined somewhere: an undefined one makes the
+// whole declaration invalid (a missing type scale once turned every page serif).
+const cssDefined = new Set();
+const cssUsed = new Map();
+for (const p of shipped) {
+  const src = fs.readFileSync(p, 'utf8');
+  for (const m of src.matchAll(/(--[\w-]+)\s*:/g)) cssDefined.add(m[1]);
+  for (const m of src.matchAll(/setProperty\(\s*['"](--[\w-]+)['"]/g)) cssDefined.add(m[1]);
+  for (const m of src.matchAll(/var\(\s*(--[\w-]+)\s*\)/g)) if (!cssUsed.has(m[1])) cssUsed.set(m[1], path.relative(EXT_DIR, p));
+}
+for (const [v, rel] of cssUsed) if (!cssDefined.has(v)) fail(`${rel}: CSS variable ${v} is used but never defined`);
+notes.push(`${cssUsed.size} CSS variables used, all defined`);
 
 if (failures.length) {
   console.error(`✗ verification failed (${failures.length}):`);

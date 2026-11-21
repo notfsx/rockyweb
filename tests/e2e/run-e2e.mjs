@@ -552,6 +552,167 @@ try {
     }
   });
 
+  // ---- settings page: mode facts, information buttons, links, hints
+  const settingsPage = async (hash) => {
+    const p = await context.newPage();
+    await p.goto(`chrome-extension://${extId}/options.html#${hash}`);
+    await p.waitForFunction(() => document.querySelectorAll('#tierFacts .fact-btn').length === 6);
+    return p;
+  };
+
+  await check('mode facts: clicking "shown" hides annoyances and makes the default mode custom, by mouse and keyboard', async () => {
+    await msg(ACTIONS.SET_GLOBAL_TIER, { tier: 'balanced' });
+    const p = await settingsPage('protection');
+    const btn = () => p.locator('#tierFacts .fact-btn', { hasText: /^(shown|hidden)$/ }).nth(1);
+    assert.equal(await btn().textContent(), 'shown');
+    assert.match(await btn().getAttribute('aria-label'), /^annoyances: shown\. Change to hidden$/);
+    await btn().click();
+    await p.waitForFunction(() => [...document.querySelectorAll('#tierFacts dt')].find((d) => d.textContent === 'annoyances').nextElementSibling.textContent === 'hidden');
+    let st = await ext.evaluate(() => chrome.storage.local.get(['globalDefaultTier', 'globalCustomConfig']));
+    assert.equal(st.globalDefaultTier, 'custom');
+    assert.equal(st.globalCustomConfig.aggressiveFiltering, true);
+    assert.equal(st.globalCustomConfig.adBlockNetwork, true, 'starts from what balanced had on');
+    // Keyboard: Tab reaches it, Enter switches it back.
+    await p.locator('#tierFacts dt', { hasText: 'annoyances' }).locator('xpath=..').locator('button').focus();
+    await p.keyboard.press('Enter');
+    await p.waitForFunction(() => [...document.querySelectorAll('#tierFacts dt')].find((d) => d.textContent === 'annoyances').nextElementSibling.textContent === 'shown');
+    st = await ext.evaluate(() => chrome.storage.local.get('globalCustomConfig'));
+    assert.equal(st.globalCustomConfig.aggressiveFiltering, false);
+    // Three-way values go round: my choices, reject all, left alone.
+    const cookie = p.locator('#tierFacts dt', { hasText: 'cookie popups' }).locator('xpath=..').locator('button');
+    assert.equal(await cookie.textContent(), 'your choices');
+    await cookie.click();
+    await p.waitForFunction(() => [...document.querySelectorAll('#tierFacts dt')].find((d) => d.textContent === 'cookie popups').nextElementSibling.textContent === 'reject all');
+    await msg(ACTIONS.SET_GLOBAL_TIER, { tier: 'balanced' });
+    await p.close();
+  });
+
+  await check('long descriptions: a short line, the rest behind "i" by hover, focus, click and Escape, described for screen readers', async () => {
+    const p = await settingsPage('protection');
+    const tip = p.locator('#aiDescription .has-tip');
+    const btn = tip.locator('.tip-btn');
+    const panel = tip.locator('.tip-panel');
+    assert.equal(await panel.isVisible(), false);
+    assert.match(await btn.getAttribute('aria-label'), /^More about /);
+    const described = await btn.evaluate((b) => document.getElementById(b.getAttribute('aria-describedby')).textContent);
+    assert.match(described, /cookie settings link/);
+    await btn.hover();
+    assert.equal(await panel.isVisible(), true, 'hover');
+    await p.mouse.move(0, 0);
+    assert.equal(await panel.isVisible(), false);
+    await btn.focus();
+    await p.keyboard.press('Tab');
+    await p.keyboard.press('Shift+Tab');
+    assert.equal(await panel.isVisible(), true, 'keyboard focus');
+    await p.keyboard.press('Escape');
+    assert.equal(await panel.isVisible(), false, 'Escape hides it');
+    await btn.click();
+    await p.mouse.move(0, 0);
+    assert.equal(await btn.getAttribute('aria-expanded'), 'true');
+    assert.equal(await panel.isVisible(), true, 'a click or tap keeps it open');
+    await p.locator('h1:visible, h2:visible').first().click();
+    assert.equal(await panel.isVisible(), false, 'a click elsewhere closes it');
+    assert.ok(await p.locator('#pageFixesDescription .tip-btn').count() === 1 && await p.locator('#operatingDescription .tip-btn').count() === 1);
+    await p.close();
+  });
+
+  await check('every AI feature carries a quiet "experimental" label; settings and welcome link to the repository', async () => {
+    const p = await settingsPage('protection');
+    const tags = await p.evaluate(() => [...document.querySelectorAll('.exp-tag')].map((t) => t.closest('h2').textContent.replace('experimental', '').trim()));
+    for (const want of ['automatically optimise protection for each site', 'let AI change pages, not only settings', 'page fixes', 'one optional extra: on-device AI']) {
+      assert.ok(tags.includes(want), want);
+    }
+    await p.goto(`chrome-extension://${extId}/options.html#data`);
+    await p.waitForSelector('#aboutPanel a');
+    assert.equal(await p.locator('#aboutPanel a').getAttribute('href'), 'https://github.com/notfsx/rockyweb');
+    assert.equal(await p.locator('#welcome a[href="https://github.com/notfsx/rockyweb"]').count(), 1);
+    await p.close();
+  });
+
+  await check('placeholder hints get shorter after a use, then go', async () => {
+    const p = await settingsPage('websites');
+    const ph = () => p.locator('#addSiteInput').getAttribute('placeholder');
+    await p.waitForFunction(() => document.getElementById('addSiteInput').placeholder.includes('e.g.'));
+    for (const [site, want] of [['hint-one.test', 'add a website'], ['hint-two.test', '']]) {
+      await p.fill('#addSiteInput', site);
+      await p.locator('#addSiteForm button[type=submit]').click();
+      await poll(async () => (await ph()) === want);
+      assert.equal(await ph(), want);
+    }
+    for (const s of ['hint-one.test', 'hint-two.test']) await msg(ACTIONS.DELETE_SITE_PROFILE, { siteKey: s });
+    await p.close();
+  });
+
+  // ---- Chrome sync (opt-in). Without a signed-in profile chrome.storage.sync keeps a local copy,
+  // which is enough to check what is written and how changes from "another device" merge.
+  const syncItems = () => ext.evaluate(() => chrome.storage.sync.get(null));
+  // The sync code lives in the service worker only; a message first wakes it if Chrome stopped it.
+  const inWorker = async (fn, arg) => { await msg(ACTIONS.GET_SYNC_STATUS, {}); return context.serviceWorkers().slice(-1)[0].evaluate(fn, arg); };
+  const decodeSynced = (items) => inWorker((it) => globalThis.RockyShared.decodeSync(it), items);
+
+  await check('sync is off by default and writes nothing to Chrome sync', async () => {
+    const st = await msg(ACTIONS.GET_SYNC_STATUS, {});
+    assert.equal(st.sync.enabled, false);
+    await msg(ACTIONS.SET_SITE_TIER, { siteKey: 'sync-before.test', tier: 'strict' });
+    await sleep(6000);
+    assert.deepEqual(Object.keys(await syncItems()).filter((k) => k.startsWith('rw:')), []);
+  });
+
+  await check('sync on: settings, sites and page changes go to Chrome sync; trackers, stats and Incognito sites never do', async () => {
+    await msg(ACTIONS.SET_SITE_TIER, { siteKey: 'incognito-only.test', tier: 'off', private: true });
+    const p = await settingsPage('data');
+    await p.locator('#syncToggle .switch').click();
+    await p.waitForFunction(() => /^On\. Synced/.test(document.getElementById('syncStatus').textContent));
+    assert.match(await p.locator('#syncStatus').textContent(), /1 website changed in Incognito stays on this device/);
+    const items = await syncItems();
+    for (const [k, v] of Object.entries(items)) assert.ok(k.length + JSON.stringify(v).length <= 8192, `${k} under 8 KB`);
+    const text = JSON.stringify(items);
+    const d = await decodeSynced(items);
+    assert.equal(d.view.sites['sync-before.test'].tier, 'strict', 'existing sites are uploaded on the first merge');
+    assert.ok(!d.view.sites['incognito-only.test'], 'an Incognito site is not synced');
+    const local = await ext.evaluate(() => chrome.storage.local.get(['learnedTrackers', 'stats']));
+    for (const tracker of Object.keys(local.learnedTrackers)) assert.ok(!text.includes(`"${tracker}"`), `tracker ${tracker} not synced`);
+    for (const w of ['learnedTrackers', 'totalAdsBlocked', 'operatingMode', 'autoOptimise']) assert.ok(!text.includes(w), w);
+    // A local change is uploaded a few seconds later.
+    await msg(ACTIONS.SET_SITE_TIER, { siteKey: 'sync-later.test', tier: 'consent_only' });
+    const later = await poll(async () => { const x = await decodeSynced(await syncItems()); return x && x.view && x.view.sites['sync-later.test'] ? x : null; }, 12000);
+    assert.ok(later, 'uploaded after a change');
+    await p.close();
+  });
+
+  await check('sync: a change from another device is merged in, and a deletion there reaches here', async () => {
+    const items = await syncItems();
+    const d = await decodeSynced(items);
+    const view = JSON.parse(JSON.stringify(d.view));
+    view.sites['other-device.test'] = Object.assign({}, view.sites['sync-before.test'], { tier: 'consent_only', updatedAt: Date.now() });
+    delete view.sites['sync-later.test'];
+    view.prefs.globalDefaultTier = 'strict';
+    const enc = await inWorker((v) => globalThis.RockyShared.encodeSync(v, { device: 'other-device', at: Date.now(), prefsAt: Date.now() + 1000 }).items, view);
+    await ext.evaluate((it) => chrome.storage.sync.set(it), enc);
+    const got = await poll(async () => {
+      const s = await ext.evaluate(() => chrome.storage.local.get(['siteProfiles', 'globalDefaultTier']));
+      return s.siteProfiles['other-device.test'] && !s.siteProfiles['sync-later.test'] ? s : null;
+    }, 12000);
+    assert.ok(got, 'merged from sync');
+    assert.equal(got.siteProfiles['other-device.test'].tier, 'consent_only');
+    assert.equal(got.globalDefaultTier, 'strict', 'the newer general setting wins');
+    assert.equal(got.siteProfiles['incognito-only.test'].tier, 'off', 'the Incognito site here is untouched');
+    await msg(ACTIONS.SET_GLOBAL_TIER, { tier: 'balanced' });
+  });
+
+  await check('sync: turning it off stops uploads; "remove the synced copy" clears Rockyweb\'s items only', async () => {
+    await ext.evaluate(() => chrome.storage.sync.set({ 'someone-else': 1 }));
+    await msg(ACTIONS.SET_SYNC, { enabled: false });
+    const before = JSON.stringify(await syncItems());
+    await msg(ACTIONS.SET_SITE_TIER, { siteKey: 'after-off.test', tier: 'strict' });
+    await sleep(6500);
+    assert.equal(JSON.stringify(await syncItems()), before, 'nothing written while off');
+    await msg(ACTIONS.CLEAR_SYNC_COPY, {});
+    assert.deepEqual(Object.keys(await syncItems()), ['someone-else']);
+    await ext.evaluate(() => chrome.storage.sync.remove('someone-else'));
+    for (const s of ['sync-before.test', 'sync-later.test', 'other-device.test', 'incognito-only.test', 'after-off.test']) await msg(ACTIONS.DELETE_SITE_PROFILE, { siteKey: s });
+  });
+
   await check('stats were persisted', async () => {
     const st = await poll(async () => {
       const s = await ext.evaluate(() => chrome.storage.local.get('stats').then((r) => r.stats));

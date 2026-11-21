@@ -29,7 +29,7 @@ COOKIE POPUPS, ANSWERED YOUR WAY
 Pick once which cookies you allow (functional, analytics, marketing). Rockyweb answers cookie popups for you on every site, using the consent platform's own controls when it can (OneTrust, Cookiebot, Didomi, Usercentrics and more) and clicking the right buttons on dozens of others. Pages that were left unscrollable are fixed automatically.
 
 ADS AND TRACKERS, BLOCKED
-Known ad networks and analytics domains are blocked with Chrome's built-in request blocking. Rockyweb also learns: a third-party domain that follows you to three or more sites loses its cookies, or is blocked entirely in strict mode. Payment, login and captcha providers are never restricted, so checkouts and sign-ins keep working.
+Known ad networks, analytics domains, session recorders and advertising pixels are blocked with Chrome's built-in request blocking. Rockyweb also learns: a third-party domain that follows you to three or more sites loses its cookies, or is blocked entirely in strict mode. Payment, login and captcha providers are never restricted, so checkouts and sign-ins keep working.
 
 ONE SWITCH PER SITE
 Every site gets a simple on/off switch and five modes: off, consent only, balanced (the default), strict, or your own custom mix. Something broken? Turn the site down a notch and carry on. The gear icon opens per-engine switches and an allow / cookies / block choice for every third-party domain on the page.
@@ -50,7 +50,7 @@ HIDE ANYTHING WITH A CLICK
 Point at a banner, click, done. Rockyweb remembers it for that site. Undo is one key away.
 
 PRIVATE BY DESIGN
-Everything stays in your browser. No servers, no accounts, no analytics, no remote code.
+Everything stays in your browser. No servers, no accounts, no analytics, no remote code. Want the same settings on another computer? Turn on Chrome sync in settings (off by default): your settings and saved page changes travel through your own Google account, while learned trackers, statistics and anything from Incognito stay on this computer.
 ```
 
 ## 3. Images (in this folder)
@@ -78,13 +78,13 @@ Rockyweb protects privacy while browsing: it answers cookie consent popups with 
 |---|---|
 | `declarativeNetRequest` | Blocks ad and tracker requests, strips cookies from learned trackers and removes tracking parameters from links, using declarative rules evaluated by Chrome. |
 | `scripting` | Applies the user's cookie choices through a consent platform's JavaScript API on the current page, and injects CSS that hides ads and elements the user picked, and applies the per-site page changes the user confirmed (hide, unstick, text size, colours, fonts). The CSS is built by the extension from a fixed list of operations; no page or model supplies code. |
-| `storage` | Saves the user's settings, per-site choices, learned tracker domains and statistics locally. |
+| `storage` | Saves the user's settings, per-site choices, learned tracker domains and statistics locally. Only if the user turns on sync in settings (off by default), a copy of the settings, per-site choices and saved page changes is kept in `chrome.storage.sync` so Chrome can copy it to the user's other computers. |
 | `webRequest` | Observes (never modifies) third-party requests to detect domains that set or send tracking cookies across sites, so they can be learned locally, and counts blocked requests for the toolbar badge. |
 | Host permission `<all_urls>` | Cookie popups, ads and trackers appear on any website, so the content script, CSS injection and request rules must be able to run on every site the user visits. |
 
 **Remote code:** No, I am not using remote code. All JavaScript is packaged in the extension. The optional AI feature uses Chrome's built-in on-device model through the `LanguageModel` API; no model or code is fetched by the extension.
 
-**Data usage:** Rockyweb does not collect or transmit user data. The optional on-device AI receives a few structural facts about one page overlay, or the heading and refusal-like button labels of one cookie banner, or, when the user describes a change, a short outline of the visible page parts (element kind, size, position and a few words of text), and runs entirely in Chrome on the user's device. The model only chooses from a fixed list of operations; it never writes selectors, CSS or script. Browsing-related data (third-party domains and the sites they were seen on) is processed and stored only on the user's device, to provide the tracker-learning feature. If the dashboard's definitions lead you to declare it anyway, tick "Web history" and state that it never leaves the device. Then certify:
+**Data usage:** Rockyweb does not collect or transmit user data. The optional on-device AI receives a few structural facts about one page overlay, or the heading and refusal-like button labels of one cookie banner, or, when the user describes a change, a short outline of the visible page parts (element kind, size, position and a few words of text), and runs entirely in Chrome on the user's device. The model only chooses from a fixed list of operations; it never writes selectors, CSS or script. Browsing-related data (third-party domains and the sites they were seen on) is processed and stored only on the user's device, to provide the tracker-learning feature. Optional sync, off by default and turned on by the user in settings, stores the user's settings, per-site choices and saved page changes in `chrome.storage.sync`, which Chrome copies between the user's own computers through their Google account; the developer has no server and never receives it. Learned trackers, statistics and anything changed in Incognito are never synced. If the dashboard's definitions lead you to declare it anyway, tick "Web history" and state that it never leaves the device. Then certify:
 - I do not sell or transfer user data to third parties, outside of the approved use cases.
 - I do not use or transfer user data for purposes unrelated to my item's single purpose.
 - I do not use or transfer user data to determine creditworthiness or for lending purposes.

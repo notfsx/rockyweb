@@ -1,8 +1,8 @@
 # Rockyweb privacy policy
 
-Effective 19 November 2026.
+Effective 20 November 2026.
 
-Rockyweb is a browser extension that answers cookie popups, blocks ads and trackers, and hides page elements you choose. It is built so that nothing about you or your browsing leaves your device.
+Rockyweb is a browser extension that answers cookie popups, blocks ads and trackers, and hides page elements you choose. It is built so that nothing about you or your browsing leaves your device. The one exception is optional and off by default: if you turn on Chrome sync in Rockyweb, your settings and page changes are copied to your other computers through your own Google account (see below).
 
 ## What Rockyweb stores, and where
 
@@ -16,10 +16,26 @@ Everything is stored in your browser with Chrome's extension storage. Nothing is
 | Counts of popups handled, ads blocked and trackers stopped | To show you statistics | `chrome.storage.local` |
 | Per-tab activity for the open page (third-party domains, counts, automatic adjustments) | To show the popup's numbers, domain list and undo | `chrome.storage.session`, cleared when the browser closes; never written for private tabs |
 | Page changes: what you asked for in your own words (at most 200 characters), the changes Rockyweb made from it (for example "hide" plus a CSS selector it generated, or a text size), and the settings it changed with their earlier values; page fixes you applied or that were applied for you | To apply them again on your next visit, to list them in the toolbar and on the settings page, and to switch them off or delete them | `chrome.storage.local`; at most 30 per website, kept until you delete them, included in the export |
+| How many times you have used each input box (a number up to 99, for three boxes) | To shorten the example text once you know the box | `chrome.storage.local`; not synced, not exported |
 | Page fixes suggested for the open page, and edits a page check skipped | To show them in the toolbar | `chrome.storage.session` with the tab's other activity |
 | Automatic optimisation memory: per website, a short fingerprint of an overlay (tool name, class names, field count) and whether it was hidden or undone; for a cookie banner, a fingerprint of its refusal-like button labels and the label that was clicked | To avoid asking the model again, to click the same button next time, and to honour your undo | `chrome.storage.local`; decisions expire after 7 days, undos after 30 |
 
 You can see, export, reset or delete all of it from the settings page (data, reset everything). Removing the extension deletes it too.
+
+## Chrome sync (optional, off by default)
+
+If you turn on "sync with Chrome" (settings, data), Rockyweb saves a copy of some of your data in `chrome.storage.sync`. Chrome then copies it, through the Google account you are signed in to Chrome with, to your other computers where Rockyweb is installed and sync is on. Google handles that copy under its own terms; Rockyweb never sees it on any server, because it has none. If you are not signed in to Chrome, or Chrome sync is off, the copy stays on this computer.
+
+What is copied:
+
+- your protection mode and custom settings, including your cookie choices;
+- your choice for page changes and page fixes;
+- websites you gave their own mode, domain choices or hidden elements;
+- page changes and page fixes you saved, with what you asked for in your own words.
+
+What is never copied: trackers Rockyweb learned (and the websites they were seen on), statistics, per-tab activity, the automatic optimisation memory, whether automatic optimisation is on, and anything you changed in an Incognito window. A random device code (16 letters and numbers, not linked to you) is stored with the copy so each computer can ignore its own changes.
+
+The copy is limited to about 96 KB, below Chrome's limit. If your data is larger, the websites changed longest ago are left out of the copy (they stay on this computer) and the settings page says how many. Turning sync off stops copying; "remove the synced copy" also deletes the copy from your Google account, without touching what is on this computer.
 
 ## On-device AI (optional, off by default)
 
@@ -36,7 +52,7 @@ It never receives what you typed into the page, form values, passwords, cookies,
 
 ## What Rockyweb does not do
 
-- It makes no network requests of its own. There is no server.
+- It makes no network requests of its own. There is no server. (Chrome sync, if you turn it on, is Chrome's own service.)
 - It has no analytics, telemetry, crash reporting or advertising.
 - It does not sell, share or transfer any data.
 - It does not load or run remote code.
@@ -51,7 +67,7 @@ It never receives what you typed into the page, form values, passwords, cookies,
 | `webRequest` (observe only) | Noticing which third-party domains set or send tracking cookies, so trackers can be learned locally. Requests are never modified or delayed through this permission. |
 | `scripting` | Applying your cookie choices through a consent platform's own controls, and injecting element hiding and page change styles. |
 | (no permission) Chrome's built-in AI | Optional automatic optimisation and "describe a change". The `LanguageModel` API needs no extension permission. |
-| `storage` | Saving your settings and the data listed above on your device. |
+| `storage` | Saving your settings and the data listed above on your device, and, only if you turn sync on, a copy of your settings in Chrome sync. |
 
 ## Changes
 

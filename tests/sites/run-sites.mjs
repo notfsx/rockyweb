@@ -3,6 +3,8 @@
 // reload, one site at a time, no logins, forms or clicks of our own. Writes JSON and screenshots to
 // tests/sites/.out (not committed); tests/sites/report.mjs turns the JSON into results.md.
 // usage: node tests/sites/run-sites.mjs [--configs=baseline,full-granular,full-reject,light-granular] [--only=id,id] [--tag=name]
+// Privacy comparison: --configs=baseline,balanced,strict (each visit also records third-party requests,
+// tracking cookies, fingerprinting reads and whether link tracking parameters survive).
 // With and without AI for unknown cookie banners (needs Chrome with Gemini Nano; local only):
 //   ROCKYWEB_NANO_PROFILE=<dir> node tests/sites/run-sites.mjs --configs=nano-ai-off,nano-ai-on [--reverse]
 import fs from 'node:fs';
@@ -11,6 +13,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { EXT_DIR as DEFAULT_EXT, loadShared } from '../../scripts/load-shared.mjs';
+import { loadTds, FINGERPRINT_PROBE, recordRequests, privacyFor, withTrackingParams } from './privacy-metrics.mjs';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 const RW = loadShared();
@@ -33,6 +36,9 @@ const SETUP = {
   'full-granular': { mode: 'full', categories: { necessary: true, functional: true, analytics: false, marketing: false } },
   'full-reject': { mode: 'full', categories: { necessary: true, functional: false, analytics: false, marketing: false } },
   'light-granular': { mode: 'light', categories: { necessary: true, functional: true, analytics: false, marketing: false } },
+  // The Balanced and Strict presets as a new user picks them.
+  balanced: { mode: 'full', tier: 'balanced', categories: { necessary: true, functional: true, analytics: false, marketing: false } },
+  strict: { mode: 'full', tier: 'strict', categories: { necessary: true, functional: false, analytics: false, marketing: false } },
   // Official Chrome with Gemini Nano, Full and granular, AI for unknown cookie banners off or on.
   'nano-ai-off': { mode: 'full', categories: { necessary: true, functional: true, analytics: false, marketing: false }, nano: true, ai: false },
   'nano-ai-on': { mode: 'full', categories: { necessary: true, functional: true, analytics: false, marketing: false }, nano: true, ai: true }
@@ -226,6 +232,7 @@ async function runConfig(name) {
       const msg = (action, payload) => ext.evaluate(([a, p]) => chrome.runtime.sendMessage({ action: a, payload: p }), [action, payload]);
       await msg(RW.ACTIONS.SET_GLOBAL_CUSTOM_OPTION, { key: 'consentCategories', value: setup.categories });
       await msg(RW.ACTIONS.SET_OPERATING_MODE, { mode: setup.mode });
+      if (setup.tier) await msg(RW.ACTIONS.SET_GLOBAL_TIER, { tier: setup.tier });
       if (nano) {
         await msg(RW.ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: setup.ai });
         await ext.evaluate(() => chrome.storage.local.set({ aiMemory: {} }));
@@ -239,11 +246,14 @@ async function runConfig(name) {
       ext.__msg = msg;
     }
     await context.addInitScript(CLICK_LOG);
+    await context.addInitScript(FINGERPRINT_PROBE);
     for (const site of corpus) {
       const r = await visit(context, ext, site, setup, shots).catch((e) => ({ id: site.id, error: String(e && e.message || e).slice(0, 200) }));
       r.config = name;
       results.push(r);
       console.log(`[${name}] ${site.id}: ${r.error ? `error ${r.error}` : `${r.rockyweb ? `${r.rockyweb.cmp}/${r.rockyweb.method}/${r.rockyweb.decision} ${r.handledMs}ms` : 'not handled'} | ${r.consent ? `${r.consent.platform || '-'} ${r.verdict}` : ''} | banner after: ${r.bannerAfter || 'no'} | scroll ${r.scrolls} | errors ${(r.errors || []).length}`}`);
+      const pv = r.privacy && !r.privacy.error ? r.privacy : null;
+      if (pv) console.log(`[${name}] ${site.id} privacy: 3p ${pv.thirdParty.loaded}/${pv.thirdParty.requests} loaded, trackers ${pv.trackers.loaded} loaded ${pv.trackers.blocked} blocked, tracker cookies ${pv.cookies.trackerThirdParty}+${pv.cookies.firstPartyTracking}, fp scripts ${pv.fingerprinting.probeScripts}, params kept ${pv.linkParams.kept.length}`);
       fs.writeFileSync(path.join(OUT, `${name}.json`), JSON.stringify(results, null, 2));
       await sleep(2500);
     }
@@ -272,10 +282,12 @@ async function visit(context, ext, site, setup, shots) {
     if (/geolocation\.onetrust\.com/.test(res.url())) { try { geo.push((await res.text()).slice(0, 200)); } catch (_) { /* gone */ } }
   });
   const r = { id: site.id, url: site.url, expectedCmp: site.expectedCmp };
+  const requests = recordRequests(page);
+  const cookiesBefore = await context.cookies();
   const t0 = Date.now();
   let status = null;
   try {
-    const res = await page.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    const res = await page.goto(withTrackingParams(site.url), { waitUntil: 'domcontentloaded', timeout: 45000 });
     status = res ? res.status() : null;
   } catch (e) { r.loadError = String(e.message).slice(0, 120); }
   r.status = status;
@@ -318,6 +330,8 @@ async function visit(context, ext, site, setup, shots) {
   r.scrolls = y1 > y0 || (r.metrics && r.metrics.scrollHeight <= r.metrics.viewportHeight + 20) ? (y1 > y0 ? 'yes' : 'short page') : 'NO';
   await page.evaluate(() => scrollTo(0, 0)).catch(() => {});
   await page.screenshot({ path: path.join(shots, `${site.id}.png`) }).catch(() => {});
+  // Before the reload, so each number is one page load.
+  r.privacy = await privacyFor(TDS, page, site.url, requests.slice(), cookiesBefore, await context.cookies()).catch((e) => ({ error: String(e).slice(0, 120) }));
 
   if (setup) {
     // Follow-up: reload. A stuck decision means no banner and nothing for Rockyweb to answer.
@@ -384,7 +398,9 @@ async function launchNano() {
   return { context, sw, close: async () => { await browser.close().catch(() => {}); chrome.kill(); } };
 }
 
+const TDS = await loadTds(HERE);
 fs.mkdirSync(OUT, { recursive: true });
+fs.writeFileSync(path.join(OUT, 'tracker-data.json'), JSON.stringify({ source: 'DuckDuckGo tracker blocklist (Tracker Radar)', built: TDS.built, fetched: TDS.fetched }, null, 2));
 console.log(`${corpus.length} sites, configs: ${CONFIGS.join(', ')}, output ${OUT}`);
 for (const c of CONFIGS) {
   if (!(c in SETUP)) throw new Error(`unknown config ${c}`);

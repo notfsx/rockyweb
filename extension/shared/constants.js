@@ -47,6 +47,7 @@
     SET_OPERATING_MODE: 'setOperatingMode',
     SET_AI_AUTO_OPTIMISE: 'setAiAutoOptimise',
     GET_AI_STATUS: 'getAiStatus',
+    AI_WARM: 'aiWarm',
     SET_SITE_NEWSLETTER: 'setSiteNewsletter',
     AI_UNDO_ADJUSTMENT: 'aiUndoAdjustment',
     AI_SITE_OPT_OUT: 'aiSiteOptOut',
@@ -64,7 +65,10 @@
     SET_PAGE_EDIT: 'setPageEdit',
     DELETE_PAGE_EDIT: 'deletePageEdit',
     SET_AI_PAGE_SETTINGS: 'setAiPageSettings',
-    SET_SITE_PAGE_FIXES: 'setSitePageFixes'
+    SET_SITE_PAGE_FIXES: 'setSitePageFixes',
+    SET_SYNC: 'setSync',
+    GET_SYNC_STATUS: 'getSyncStatus',
+    CLEAR_SYNC_COPY: 'clearSyncCopy'
   });
 
   RW.TIER_ORDER = Object.freeze(['off', 'consent_only', 'balanced', 'strict', 'custom']);
@@ -151,6 +155,25 @@
       return LM.create(plain);
     });
   };
+
+  // What this browser session knows about Chrome's model being loaded: when something first asked
+  // for it (loadingSince) and when it last answered (answeredAt). chrome.storage.session empties
+  // when Chrome quits, which is also when the model has to be loaded again. Extension pages and the
+  // service worker only.
+  RW.AI_LOAD_KEY = 'aiModelLoad';
+  // How long the service worker keeps a session after "describe a change" was used.
+  RW.AI_KEEP_WARM_MS = 10 * 60000;
+  RW.aiLoadGet = async () => {
+    try { return (await chrome.storage.session.get(RW.AI_LOAD_KEY))[RW.AI_LOAD_KEY] || {}; } catch (_) { return {}; }
+  };
+  // One write at a time, so two notes made together never overwrite each other.
+  let loadNotes = Promise.resolve();
+  RW.aiLoadNote = (patch) => (loadNotes = loadNotes.then(async () => {
+    try {
+      const cur = await RW.aiLoadGet();
+      await chrome.storage.session.set({ [RW.AI_LOAD_KEY]: Object.assign({}, cur, patch) });
+    } catch (_) { /* not important */ }
+  }));
 
   // Code switch for answering unknown cookie banners with the on-device model. When false the
   // feature never runs, whatever the settings say.

@@ -8,3 +8,4 @@ extension/_metadata/
 dist/
 .nano-profile/
 tests/sites/.out/
+tests/sites/.data/

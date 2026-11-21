@@ -17,6 +17,7 @@ export function loadShared() {
     'shared/cosmetic-lists.js',
     'shared/ai-policy.js',
     'shared/page-edits.js',
+    'shared/sync.js',
     'engines/consent-rules.js',
     'engines/ai-broker.js'
   ]) {

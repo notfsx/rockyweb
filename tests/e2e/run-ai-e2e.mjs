@@ -857,6 +857,22 @@ try {
 
   // ---- describe a change (popup, model double in the page)
 
+  await check('describe a change: the worker loads the model first and keeps it for a while', async () => {
+    await model({});
+    sw = await getSw();
+    const before = await sw.evaluate(() => self.__fakeLM.created);
+    assert.equal((await msg(ACTIONS.AI_WARM, {})).ok, true);
+    const after = await sw.evaluate(() => ({ created: self.__fakeLM.created, has: broker.hasSession, keptMs: broker.keptUntil - Date.now() }));
+    assert.equal(after.created, before + 1, 'one session made in the worker');
+    assert.equal(after.has, true);
+    assert.ok(after.keptMs > 9 * 60000, `kept about 10 minutes (${after.keptMs} ms)`);
+    assert.equal((await msg(ACTIONS.AI_WARM, {})).ok, true);
+    assert.equal(await sw.evaluate(() => self.__fakeLM.created), before + 1, 'a second request reuses it');
+    const load = await ext.evaluate(() => chrome.storage.session.get('aiModelLoad').then((r) => r.aiModelLoad || {}));
+    assert.ok(load.loadingSince > 0 && load.readyAt >= load.loadingSince, 'the load is noted for the popup');
+    await sw.evaluate(() => broker.release());
+  });
+
   await check('describe a change: preview, confirm, apply, undo; unavailable AI is explained', async () => {
     await visit(at('describe.test', '/plain'));
     const tabId = await tabIdOf(at('describe.test', '/'));

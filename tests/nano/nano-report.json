@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-11-19T18:25:02.221Z",
+  "startedAt": "2026-11-21T01:24:19.314Z",
   "platform": "win32 10.0.26300",
   "cpus": 16,
   "ramGb": 47,
@@ -32,7 +32,7 @@
     {
       "name": "cold model: article overlay",
       "state": "shown",
-      "seconds": 20.9,
+      "seconds": 21.1,
       "modelCalls": 0,
       "timeouts": 1,
       "warming": 0,
@@ -41,7 +41,7 @@
     {
       "name": "cold model: next article during the backoff",
       "state": "shown",
-      "seconds": 0.9,
+      "seconds": 1.1,
       "modelCalls": 0,
       "timeouts": 0,
       "warming": 1,
@@ -49,13 +49,13 @@
     },
     {
       "name": "model warm-up by the test harness",
-      "createSeconds": 494.3,
-      "firstInferenceSeconds": 0.3
+      "createSeconds": 356.2,
+      "firstInferenceSeconds": 0.5
     },
     {
       "name": "article with newsletter overlay",
       "state": "hidden",
-      "seconds": 3.3,
+      "seconds": 3.7,
       "modelCalls": 1,
       "timeouts": 0,
       "warming": 0,
@@ -72,7 +72,7 @@
     {
       "name": "article after the session was released",
       "state": "hidden",
-      "seconds": 2.7,
+      "seconds": 3,
       "modelCalls": 1,
       "timeouts": 0,
       "warming": 0,

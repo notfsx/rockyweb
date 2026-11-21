@@ -217,3 +217,17 @@ test('plan session carries worked examples that the parser accepts', () => {
   assert.ok(prompts.length >= 5);
   for (const p of prompts.filter((x) => x.role === 'assistant')) assert.ok(RW.parsePlan(p.content), p.content);
 });
+
+test('checkPlan: a request that is not about protection never changes protection (seen on real Nano)', () => {
+  const plan = { changes: [{ op: 'site_mode', value: 'off' }, { op: 'setting', key: 'adBlockNetwork', value: false }], unsupported: [] };
+  for (const ask of ['hide the bar asking me to download the app', 'make the text bigger and the page dark', 'the header follows me down the page',
+    'hide the free delivery banner', 'stop the header following me', 'hide the chat widget', 'hide everything but the article', 'use light colours', 'dark mode please']) {
+    const r = RW.checkPlan(plan, ask, null);
+    assert.deepEqual(r.changes, [], ask);
+    assert.ok(r.unsupported.includes('a protection change you did not ask for'), ask);
+  }
+  for (const ask of ['show adverts here', 'this site is broken', 'make this site strict', 'turn Rockyweb off on this site', 'turn it off here',
+    'I still get cookie banners, reject them all', 'stop cleaning links', 'hide annoyances like chat widgets', 'switch to light mode']) {
+    assert.ok(RW.checkPlan(plan, ask, null).changes.length > 0, ask);
+  }
+});

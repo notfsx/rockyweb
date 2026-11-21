@@ -205,5 +205,55 @@
     if (next) next.focus();
   }
 
-  RW.UI = { ICONS, icon, h, send, toggle, seg, onOff, tri, fmt, timeAgo, errorText, TRI_LABELS, keepFocus };
+  // A short summary inline and the fuller explanation behind an "i" button. The explanation shows on
+  // hover and keyboard focus, stays open after a click or tap, and closes with Escape or a click
+  // elsewhere. The button is described by it, so screen readers announce it on focus.
+  let tipSeq = 0;
+  function setTip(p, open) {
+    p.classList.toggle('open', open);
+    const b = p.querySelector('.tip-btn');
+    if (b) b.setAttribute('aria-expanded', String(open));
+  }
+  function infoText(summary, details, label, attrs) {
+    const id = `tip-${++tipSeq}`;
+    const btn = h('button', {
+      class: 'tip-btn', type: 'button', 'aria-label': `More about ${label}`, 'aria-expanded': 'false', 'aria-controls': id, 'aria-describedby': id
+    }, icon('info'));
+    const p = h('p', Object.assign({ class: 'has-tip' }, attrs || {}), h('span', { class: 'tip-summary', text: summary }), ' ', btn,
+      h('span', { class: 'tip-panel', id, role: 'note', text: details }));
+    btn.addEventListener('click', (e) => { e.stopPropagation(); p.classList.remove('hush'); setTip(p, btn.getAttribute('aria-expanded') !== 'true'); });
+    for (const ev of ['mouseleave', 'focusout']) p.addEventListener(ev, () => p.classList.remove('hush'));
+    return p;
+  }
+  function closeTips(except) {
+    for (const p of document.querySelectorAll('.has-tip.open')) if (!(except && p.contains(except))) setTip(p, false);
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('click', (e) => closeTips(e.target));
+    // Escape also hides one shown by hover or focus, until the pointer or focus leaves it.
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeTips(); for (const p of document.querySelectorAll('.has-tip')) p.classList.add('hush'); } });
+  }
+
+  // A quiet label for features that use Chrome's on-device AI.
+  const experimental = () => h('span', {
+    class: 'exp-tag', title: 'Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.', text: 'experimental'
+  });
+
+  // Placeholder hints that get shorter once a field has been used: the full example at first, a
+  // short one after the first use, none after the second. Counted on this device only.
+  const HINT_KEY = 'hintUses';
+  async function hintUses(key) {
+    try { const r = await chrome.storage.local.get(HINT_KEY); return Number((r[HINT_KEY] || {})[key]) || 0; } catch (_) { return 0; }
+  }
+  async function countHintUse(key) {
+    try {
+      const r = await chrome.storage.local.get(HINT_KEY);
+      const all = Object.assign({}, r[HINT_KEY]);
+      all[key] = Math.min(99, (Number(all[key]) || 0) + 1);
+      await chrome.storage.local.set({ [HINT_KEY]: all });
+    } catch (_) { /* not important */ }
+  }
+  const hintFor = (uses, full, short) => (uses <= 0 ? full : uses === 1 ? short : '');
+
+  RW.UI = { ICONS, icon, h, send, toggle, seg, onOff, tri, fmt, timeAgo, errorText, TRI_LABELS, keepFocus, infoText, closeTips, experimental, hintUses, countHintUse, hintFor };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

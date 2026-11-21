@@ -4,7 +4,9 @@
 
   const RW = window.RockyShared;
   const A = RW.ACTIONS;
-  const { h, icon, send, toggle, seg, tri, fmt, errorText, keepFocus } = RW.UI;
+  const { h, icon, toggle, seg, tri, fmt, errorText, keepFocus, experimental, hintUses, countHintUse, hintFor } = RW.UI;
+  // Changes made from an Incognito tab are marked, so they are never synced.
+  const send = (action, payload) => RW.UI.send(action, data && data.incognito ? Object.assign({}, payload, { private: true }) : payload);
 
   const main = document.getElementById('main');
   const gear = document.getElementById('gear');
@@ -28,7 +30,14 @@
   let showAdjustments = false;
   let showChanges = false;
   // "Describe a change": optional, on-device only. ops are page edits, shown live on the page until applied or cancelled.
-  const describe = { open: false, availability: null, busy: false, text: '', plan: null, preview: null, ops: [], notes: [], error: '', applied: null, saved: null, askAgain: false };
+  // phase: what the popup is waiting for, shown as it is ('loading' is Chrome loading its model, 'thinking'
+  // is the model answering, 'slow' is an answer taking longer than usual).
+  const describe = { open: false, availability: null, busy: false, text: '', plan: null, preview: null, ops: [], notes: [], error: '', applied: null, saved: null, askAgain: false,
+    phase: '', since: 0, loadSince: 0, uses: 0, ready: false };
+  // One session per popup with the instructions and examples already read, made when "describe a change"
+  // opens so the model reads them while you type. Each request uses a clone of it.
+  const model = { base: null, kind: '', ctrl: null, startedAt: 0, ready: false };
+  let ticker = 0;
   let previewPort = null;
 
   gear.append(icon('gear'));
@@ -210,7 +219,7 @@
       h('button', {
         class: 'adj-toggle', type: 'button', 'aria-expanded': String(showChanges),
         onclick: () => { showChanges = !showChanges; render(); }
-      }, count, icon('chevron', `chev${showChanges ? ' up' : ''}`)));
+      }, h('span', {}, count, experimental()), icon('chevron', `chev${showChanges ? ' up' : ''}`)));
     if (!showChanges) return wrap;
     const ul = h('ul', { class: 'adj-list' });
     for (const f of fixes) {
@@ -244,7 +253,7 @@
     const toggleBtn = h('button', {
       class: 'adj-toggle', type: 'button', 'aria-expanded': String(showAdjustments),
       onclick: () => { showAdjustments = !showAdjustments; render(); }
-    }, `automatic adjustments · ${list.length}`, icon('chevron', `chev${showAdjustments ? ' up' : ''}`));
+    }, h('span', {}, `automatic adjustments · ${list.length}`, experimental()), icon('chevron', `chev${showAdjustments ? ' up' : ''}`));
     const wrap = h('section', { class: 'adjustments', 'aria-label': 'Automatic adjustments' }, toggleBtn);
     if (showAdjustments) {
       const ul = h('ul', { class: 'adj-list' });
@@ -334,8 +343,102 @@
     if (a === null) return 'Checking whether on-device AI is available…';
     if (a === 'absent' || a === 'unavailable') return 'On-device AI is unavailable in this browser or on this device.';
     if (a === 'downloadable') return 'On-device AI is not set up yet. Turn on automatic optimisation in settings to download it.';
-    if (a === 'downloading') return 'Chrome is still downloading the on-device model.';
+    if (a === 'downloading') return 'Chrome is downloading the on-device model. This happens once; you can keep browsing.';
     return null;
+  }
+
+  // Starts Chrome loading its model and reading Rockyweb's instructions, without waiting for it.
+  // kind 'edits' includes the page change instructions; 'plan' is settings only.
+  function prepareModel(kindWanted) {
+    const kind = kindWanted || (!data.aiSettings || data.aiSettings.pageEdits !== false ? 'edits' : 'plan');
+    if (model.base && model.kind === kind) return model.base;
+    dropModel();
+    Object.assign(model, { kind, ctrl: new AbortController(), startedAt: Date.now(), ready: false });
+    const startedAt = model.startedAt;
+    const signal = model.ctrl.signal;
+    // The service worker loads the model first and keeps it for a while, so the load goes on if this
+    // popup closes (a create() cut short here would be thrown away). Quick when it is already loaded.
+    const known = RW.aiLoadGet().then((st) => {
+      describe.prevAnswered = st.answeredAt || 0;
+      const pending = st.loadingSince && !(st.readyAt > st.loadingSince);
+      describe.loadSince = pending ? st.loadingSince : startedAt;
+      if (describe.busy) render();
+      return st;
+    });
+    const warmed = known.then(() => {
+      const asked = Date.now();
+      return send(A.AI_WARM, {}).catch(() => null).then((r) => (r && r.reason === 'loading' ? modelReady(asked, signal) : r));
+    });
+    let guarded = null;
+    guarded = warmed.then(() => {
+      if (signal.aborted) throw new DOMException('stopped', 'AbortError');
+      model.loadedAt = Date.now();
+      return RW.aiCreate(LanguageModel, {
+        initialPrompts: kind === 'edits' ? RW.editInitialPrompts() : RW.planInitialPrompts(), signal
+      });
+    }).then((session) => {
+      if (model.base !== guarded) { try { session.destroy(); } catch (_) { /* ignore */ } throw new DOMException('replaced', 'AbortError'); }
+      model.ready = true;
+      model.createMs = Date.now() - startedAt;
+      model.prefillMs = Date.now() - model.loadedAt;
+      return session;
+    });
+    model.base = guarded;
+    guarded.catch(() => { if (model.base === guarded) { model.base = null; model.ready = false; } });
+    return guarded;
+  }
+
+  // Resolves when the service worker notes that its load (asked for at `since`) has finished.
+  function modelReady(since, signal) {
+    return new Promise((resolve) => {
+      // Asked again every minute: a worker Chrome restarted would otherwise never report back.
+      const again = setInterval(() => { send(A.AI_WARM, {}).catch(() => null); }, 60000);
+      const done = () => { clearInterval(again); chrome.storage.onChanged.removeListener(onChange); resolve(); };
+      const check = (st) => { if (st && st.warmAt >= since) done(); };
+      const onChange = (changes, area) => { if (area === 'session' && changes[RW.AI_LOAD_KEY]) check(changes[RW.AI_LOAD_KEY].newValue); };
+      chrome.storage.onChanged.addListener(onChange);
+      signal.addEventListener('abort', done, { once: true });
+      RW.aiLoadGet().then(check);
+    });
+  }
+
+  function dropModel() {
+    const old = model.base;
+    model.base = null;
+    model.ready = false;
+    if (model.ctrl) model.ctrl.abort();
+    model.ctrl = null;
+    if (old) old.then((sn) => { try { sn.destroy(); } catch (_) { /* ignore */ } }, () => {});
+  }
+  window.addEventListener('pagehide', dropModel);
+
+  // Rejects when the signal aborts, even if the promise would go on.
+  const until = (promise, signal) => new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(new DOMException('stopped', 'AbortError')); return; }
+    const stop = () => reject(new DOMException('stopped', 'AbortError'));
+    signal.addEventListener('abort', stop, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', stop));
+  });
+
+  const minutes = (ms) => {
+    const m = Math.floor(ms / 60000);
+    return m < 1 ? 'under a minute' : m === 1 ? '1 minute' : `${m} minutes`;
+  };
+
+  // The line under the box while Rockyweb waits, from what is really happening. A warm model gets
+  // ready in a second or two, so nothing is said about loading until it has taken a few seconds.
+  const LOAD_QUIET_MS = 4000;
+  function waitingText() {
+    if (describe.phase === 'loading') {
+      if (Date.now() - describe.since < LOAD_QUIET_MS) return '';
+      const so = `${minutes(Date.now() - (describe.loadSince || describe.since))} so far`;
+      const rest = 'You can close this and come back: Chrome keeps loading, and nothing changes until you apply.';
+      return describe.prevAnswered
+        ? `Chrome is loading its on-device model again (${so}). Chrome unloads it a minute or two after nothing uses it; Rockyweb keeps it loaded for 10 minutes after each request. ${rest}`
+        : `Chrome is loading its on-device model (${so}). It does this the first time the model is needed after Chrome starts; on our test laptop that took 3 to 16 minutes. ${rest}`;
+    }
+    if (describe.phase === 'slow') return 'Taking longer than usual. Nothing changes until you apply.';
+    return '';
   }
 
   // Live preview on the page while the popup is open; it disappears when the popup closes.
@@ -370,45 +473,66 @@
     const saved = !describe.askAgain && RW.findSavedPageEdit(data.pageEdits, text);
     describe.askAgain = false;
     if (saved) { describe.saved = saved.id; render(); return; }
+    const stopper = new AbortController();
+    describe.stop = () => stopper.abort();
     describe.busy = true;
+    describe.since = Date.now();
+    describe.phase = model.ready ? 'thinking' : 'loading';
+    clearInterval(ticker);
+    // Redraw only when what the popup says changes, so screen readers are not told the same thing again.
+    ticker = setInterval(() => { const w = waitingText(); if (describe.busy && w !== describe.lastWait) { describe.lastWait = w; render(); } }, 2000);
     render();
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 45000);
-    let session = null;
-    let created = false;
     let answered = false;
     try {
-      const page = data.aiSettings && data.aiSettings.pageEdits !== false ? await toPage(A.GET_PAGE_OUTLINE) : null;
-      const outline = page && Array.isArray(page.outline) ? page.outline : null;
+      const wantsEdits = data.aiSettings && data.aiSettings.pageEdits !== false;
+      const page = wantsEdits ? await toPage(A.GET_PAGE_OUTLINE) : null;
+      let outline = page && Array.isArray(page.outline) ? page.outline : null;
+      const outlineAt = Date.now();
+      // While Chrome loads its model there is nothing to time out: the service worker keeps loading
+      // it whatever the popup does, so the popup waits and says so, and you can stop waiting.
+      // Without an outline (a page the content script cannot reach) the request is about settings only.
+      const base = await until(prepareModel(outline ? null : 'plan'), stopper.signal);
+      // After a long load the page may have moved on, and the page forgets an old outline.
+      if (outline && Date.now() - outlineAt > 30000) {
+        const again = await toPage(A.GET_PAGE_OUTLINE).catch(() => null);
+        if (again && Array.isArray(again.outline)) outline = again.outline;
+      }
+      describe.phase = 'thinking';
+      describe.since = Date.now();
+      render();
+      const slowTimer = setTimeout(() => { if (describe.busy) { describe.phase = 'slow'; render(); } }, 8000);
       // The on-device model sometimes answers with broken JSON or element ids that are not on the
       // page. One fresh try usually fixes it; a second bad answer is reported as it is.
       let raw = '';
       let parsed = { edits: [], notes: [], dropped: 0 };
-      for (let attempt = 0; attempt < 2; attempt++) {
-        if (session) { try { session.destroy(); } catch (_) { /* ignore */ } }
-        session = await RW.aiCreate(LanguageModel, {
-          initialPrompts: outline ? RW.editInitialPrompts() : RW.planInitialPrompts(), signal: ctrl.signal
-        });
-        created = true;
-        // A good answer takes a few seconds; one still writing after 12 s is stuck in a loop.
-        const turn = new AbortController();
-        const stop = () => turn.abort();
-        ctrl.signal.addEventListener('abort', stop);
-        const turnTimer = setTimeout(stop, 12000);
-        try {
-          raw = await session.prompt(outline ? RW.editRequest(text, outline) : RW.planRequest(text),
-            { responseConstraint: outline ? RW.planWithEditsSchema() : RW.AI_PLAN_SCHEMA, signal: turn.signal });
-          answered = true;
-        } catch (err) {
-          if (ctrl.signal.aborted) throw err;
-          raw = '';
-        } finally {
-          clearTimeout(turnTimer);
-          ctrl.signal.removeEventListener('abort', stop);
+      try {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const turn = new AbortController();
+          const stop = () => turn.abort();
+          stopper.signal.addEventListener('abort', stop);
+          // A good answer takes a few seconds; one still writing after 12 s is stuck in a loop.
+          const turnTimer = setTimeout(stop, 12000);
+          let child = null;
+          try {
+            child = typeof base.clone === 'function' ? await base.clone({ signal: turn.signal }) : base;
+            raw = await child.prompt(outline ? RW.editRequest(text, outline) : RW.planRequest(text),
+              { responseConstraint: outline ? RW.planWithEditsSchema() : RW.AI_PLAN_SCHEMA, signal: turn.signal });
+            answered = true;
+          } catch (err) {
+            if (stopper.signal.aborted) throw err;
+            raw = '';
+          } finally {
+            clearTimeout(turnTimer);
+            stopper.signal.removeEventListener('abort', stop);
+            if (child && child !== base) { try { child.destroy(); } catch (_) { /* ignore */ } }
+          }
+          parsed = outline ? RW.parsePlanEdits(raw, outline, text) : parsed;
+          if (raw && RW.parsePlan(raw) && !(parsed.dropped && !parsed.edits.length)) break;
         }
-        parsed = outline ? RW.parsePlanEdits(raw, outline, text) : parsed;
-        if (raw && RW.parsePlan(raw) && !(parsed.dropped && !parsed.edits.length)) break;
+      } finally {
+        clearTimeout(slowTimer);
       }
+      if (answered) RW.aiLoadNote({ answeredAt: Date.now() });
       if (!raw) throw new Error('stuck');
       const plan = RW.checkPlan(RW.parsePlan(raw), text, cfg);
       let ops = [];
@@ -426,17 +550,31 @@
       else {
         Object.assign(describe, { plan, preview: RW.describePlan(plan, cfg), ops, notes });
         if (ops.length) showOnPage(ops);
+        countHintUse('describe');
+        describe.uses++;
       }
     } catch (err) {
-      // Creation is where a cold model waits: Chrome is still loading it after starting.
-      describe.error = !created && ctrl.signal.aborted
-        ? 'Chrome is still loading its on-device model, which can take several minutes after Chrome starts. Nothing was changed; try again shortly.'
-        : err && err.message === 'stuck' ? 'The on-device AI got stuck on that one. Nothing was changed; try rewording it.'
-          : ctrl.signal.aborted ? 'That took too long. Please try again.' : 'On-device AI could not answer just now.';
+      const name = err && err.name;
+      if (stopper.signal.aborted) {
+        describe.error = describe.phase === 'loading'
+          ? 'Stopped waiting. Chrome keeps loading its model, so the next try will be quicker. Nothing was changed.'
+          : 'Stopped. Nothing was changed.';
+      } else if (err && err.message === 'stuck') {
+        describe.error = 'The on-device AI got stuck on that one. Nothing was changed; try rewording it.';
+      } else if (name === 'NotSupportedError' || name === 'NotAllowedError' || name === 'InvalidStateError') {
+        describe.error = `Chrome could not start its on-device model (${name}). Nothing was changed.`;
+      } else if (name === 'QuotaExceededError') {
+        describe.error = 'This page is too big for the on-device model to read. Nothing was changed.';
+      } else {
+        describe.error = `On-device AI could not answer just now${name && name !== 'Error' ? ` (${name})` : ''}. Nothing was changed.`;
+      }
+      // A session that failed is not reused; the next try starts a fresh one.
+      if (!stopper.signal.aborted && model.ready) dropModel();
     } finally {
-      clearTimeout(timer);
-      if (session) { try { session.destroy(); } catch (_) { /* ignore */ } }
+      clearInterval(ticker);
       describe.busy = false;
+      describe.phase = '';
+      describe.stop = null;
       render();
     }
   }
@@ -484,17 +622,21 @@
       class: 'describe-toggle', type: 'button', 'aria-expanded': String(describe.open),
       onclick: () => {
         describe.open = !describe.open;
-        if (describe.open && describe.availability === null) aiAvailability().then((a) => { describe.availability = a; render(); });
+        if (describe.open) {
+          hintUses('describe').then((n) => { describe.uses = n; render(); });
+          const go = (a) => { describe.availability = a; if (a === 'available' && !describeBlocker(cfg)) prepareModel(); render(); };
+          if (describe.availability === null) aiAvailability().then(go); else go(describe.availability);
+        }
         render();
       }
-    }, 'describe a change', icon('chevron', `chev${describe.open ? ' up' : ''}`));
+    }, h('span', {}, 'describe a change', experimental()), icon('chevron', `chev${describe.open ? ' up' : ''}`));
     sec.append(btn);
     if (!describe.open) return sec;
     const blocker = describeBlocker(cfg);
     const edits = !data.aiSettings || data.aiSettings.pageEdits !== false;
     const input = h('textarea', {
       class: 'describe-input', rows: '2', maxlength: '300',
-      placeholder: edits ? 'e.g. hide the app banner and make the text bigger' : 'e.g. hide newsletter prompts but keep my current tracker settings',
+      placeholder: hintFor(describe.uses, edits ? 'e.g. hide the app banner and make the text bigger' : 'e.g. hide newsletter prompts but keep my current tracker settings', 'what should change?'),
       'aria-label': 'Describe a change for this site', disabled: !!blocker || describe.busy
     });
     input.value = describe.text;
@@ -534,8 +676,12 @@
         h('button', { class: 'adj-btn primary', type: 'button', disabled: nothing, onclick: applyPlan, text: 'apply' }),
         h('button', { class: 'adj-btn', type: 'button', onclick: cancelPlan, text: 'cancel' })));
     } else {
+      const wait = describe.busy ? waitingText() : '';
+      if (wait) sec.append(h('p', { class: 'note', role: 'status', text: wait }));
       sec.append(h('div', { class: 'describe-actions' },
-        h('button', { class: 'adj-btn primary', type: 'button', disabled: describe.busy, onclick: () => previewChange(cfg), text: describe.busy ? 'thinking…' : 'preview' })));
+        h('button', { class: 'adj-btn primary', type: 'button', disabled: describe.busy, onclick: () => previewChange(cfg),
+          text: !describe.busy ? 'preview' : describe.phase !== 'loading' ? 'fetching…' : Date.now() - describe.since < LOAD_QUIET_MS ? 'starting…' : 'loading the model…' }),
+        describe.busy && describe.stop ? h('button', { class: 'adj-btn', type: 'button', onclick: () => describe.stop && describe.stop(), text: 'stop waiting' }) : null));
     }
     return sec;
   }

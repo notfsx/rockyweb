@@ -7,7 +7,7 @@
     },
     "condition": {
       "requestDomains": [
-        "agkn.com"
+        "adfstat.yandex.ru"
       ],
       "domainType": "thirdParty"
     }
@@ -20,7 +20,7 @@
     },
     "condition": {
       "requestDomains": [
-        "bidr.io"
+        "ads-api.tiktok.com"
       ],
       "domainType": "thirdParty"
     }
@@ -33,7 +33,7 @@
     },
     "condition": {
       "requestDomains": [
-        "bluekai.com"
+        "ads-api.twitter.com"
       ],
       "domainType": "thirdParty"
     }
@@ -46,7 +46,7 @@
     },
     "condition": {
       "requestDomains": [
-        "bounceexchange.com"
+        "ads-sg.tiktok.com"
       ],
       "domainType": "thirdParty"
     }
@@ -59,7 +59,7 @@
     },
     "condition": {
       "requestDomains": [
-        "chartbeat.com"
+        "ads-twitter.com"
       ],
       "domainType": "thirdParty"
     }
@@ -72,7 +72,7 @@
     },
     "condition": {
       "requestDomains": [
-        "chartbeat.net"
+        "ads.linkedin.com"
       ],
       "domainType": "thirdParty"
     }
@@ -85,7 +85,7 @@
     },
     "condition": {
       "requestDomains": [
-        "crwdcntrl.net"
+        "ads.pinterest.com"
       ],
       "domainType": "thirdParty"
     }
@@ -98,7 +98,7 @@
     },
     "condition": {
       "requestDomains": [
-        "cxense.com"
+        "ads.yahoo.com"
       ],
       "domainType": "thirdParty"
     }
@@ -111,7 +111,7 @@
     },
     "condition": {
       "requestDomains": [
-        "demdex.net"
+        "adtech.yahooinc.com"
       ],
       "domainType": "thirdParty"
     }
@@ -124,7 +124,7 @@
     },
     "condition": {
       "requestDomains": [
-        "dotomi.com"
+        "agkn.com"
       ],
       "domainType": "thirdParty"
     }
@@ -137,7 +137,7 @@
     },
     "condition": {
       "requestDomains": [
-        "everesttech.net"
+        "an.facebook.com"
       ],
       "domainType": "thirdParty"
     }
@@ -150,7 +150,7 @@
     },
     "condition": {
       "requestDomains": [
-        "exelator.com"
+        "analytics-sg.tiktok.com"
       ],
       "domainType": "thirdParty"
     }
@@ -163,7 +163,7 @@
     },
     "condition": {
       "requestDomains": [
-        "eyeota.net"
+        "analytics.pinterest.com"
       ],
       "domainType": "thirdParty"
     }
@@ -176,7 +176,7 @@
     },
     "condition": {
       "requestDomains": [
-        "google-analytics.com"
+        "analytics.pointdrive.linkedin.com"
       ],
       "domainType": "thirdParty"
     }
@@ -189,7 +189,7 @@
     },
     "condition": {
       "requestDomains": [
-        "histats.com"
+        "analytics.query.yahoo.com"
       ],
       "domainType": "thirdParty"
     }
@@ -202,7 +202,7 @@
     },
     "condition": {
       "requestDomains": [
-        "id5-sync.com"
+        "analytics.tiktok.com"
       ],
       "domainType": "thirdParty"
     }
@@ -215,7 +215,7 @@
     },
     "condition": {
       "requestDomains": [
-        "intentiq.com"
+        "analytics.twitter.com"
       ],
       "domainType": "thirdParty"
     }
@@ -228,7 +228,7 @@
     },
     "condition": {
       "requestDomains": [
-        "krxd.net"
+        "analytics.yahoo.com"
       ],
       "domainType": "thirdParty"
     }
@@ -241,7 +241,7 @@
     },
     "condition": {
       "requestDomains": [
-        "liadm.com"
+        "anonm.io"
       ],
       "domainType": "thirdParty"
     }
@@ -254,7 +254,7 @@
     },
     "condition": {
       "requestDomains": [
-        "mathtag.com"
+        "anonymised.io"
       ],
       "domainType": "thirdParty"
     }
@@ -267,7 +267,7 @@
     },
     "condition": {
       "requestDomains": [
-        "mc.yandex.com"
+        "appmetrica.yandex.ru"
       ],
       "domainType": "thirdParty"
     }
@@ -280,7 +280,7 @@
     },
     "condition": {
       "requestDomains": [
-        "mc.yandex.ru"
+        "bat.bing.com"
       ],
       "domainType": "thirdParty"
     }
@@ -293,7 +293,7 @@
     },
     "condition": {
       "requestDomains": [
-        "ml314.com"
+        "bidr.io"
       ],
       "domainType": "thirdParty"
     }
@@ -306,7 +306,7 @@
     },
     "condition": {
       "requestDomains": [
-        "nr-data.net"
+        "bluekai.com"
       ],
       "domainType": "thirdParty"
     }
@@ -319,7 +319,7 @@
     },
     "condition": {
       "requestDomains": [
-        "omtrdc.net"
+        "bounceexchange.com"
       ],
       "domainType": "thirdParty"
     }
@@ -332,7 +332,7 @@
     },
     "condition": {
       "requestDomains": [
-        "permutive.com"
+        "business-api.tiktok.com"
       ],
       "domainType": "thirdParty"
     }
@@ -345,7 +345,7 @@
     },
     "condition": {
       "requestDomains": [
-        "pippio.com"
+        "chartbeat.com"
       ],
       "domainType": "thirdParty"
     }
@@ -358,7 +358,7 @@
     },
     "condition": {
       "requestDomains": [
-        "quantcount.com"
+        "chartbeat.net"
       ],
       "domainType": "thirdParty"
     }
@@ -371,7 +371,7 @@
     },
     "condition": {
       "requestDomains": [
-        "quantserve.com"
+        "clarity.ms"
       ],
       "domainType": "thirdParty"
     }
@@ -384,7 +384,7 @@
     },
     "condition": {
       "requestDomains": [
-        "rlcdn.com"
+        "click.googleanalytics.com"
       ],
       "domainType": "thirdParty"
     }
@@ -397,7 +397,7 @@
     },
     "condition": {
       "requestDomains": [
-        "scorecardresearch.com"
+        "crazyegg.com"
       ],
       "domainType": "thirdParty"
     }
@@ -410,7 +410,7 @@
     },
     "condition": {
       "requestDomains": [
-        "statcounter.com"
+        "crwdcntrl.net"
       ],
       "domainType": "thirdParty"
     }
@@ -423,7 +423,7 @@
     },
     "condition": {
       "requestDomains": [
-        "tapad.com"
+        "ct.pinterest.com"
       ],
       "domainType": "thirdParty"
     }
@@ -436,13 +436,858 @@
     },
     "condition": {
       "requestDomains": [
-        "zeotap.com"
+        "cxense.com"
       ],
       "domainType": "thirdParty"
     }
   },
   {
     "id": 35,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "demdex.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 36,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "dotmetrics.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 37,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "dotomi.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 38,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "events.reddit.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 39,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "events.redditmedia.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 40,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "everesttech.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 41,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "exelator.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 42,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "eyeota.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 43,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "freshmarketer.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 44,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "fullstory.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 45,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "gemini.yahoo.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 46,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "gemius.pl"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 47,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "geo.yahoo.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 48,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "google-analytics.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 49,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "histats.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 50,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "hotjar.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 51,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "hotjar.io"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 52,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "hs-analytics.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 53,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "id5-sync.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 54,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "imrworldwide.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 55,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "inspectlet.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 56,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "intentiq.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 57,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "krxd.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 58,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "liadm.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 59,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "log.byteoversea.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 60,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "log.fc.yahoo.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 61,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "log.pinterest.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 62,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "luckyorange.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 63,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "luckyorange.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 64,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "mathtag.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 65,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "mc.yandex.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 66,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "mc.yandex.ru"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 67,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "metrika.yandex.ru"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 68,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "ml314.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 69,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "mouseflow.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 70,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "nr-data.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 71,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "omtrdc.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 72,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "opecloud.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 73,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "optable.co"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 74,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "parsely.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 75,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "partnerads.ysm.yahoo.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 76,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "permutive.app"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 77,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "permutive.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 78,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "pippio.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 79,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "pixel.facebook.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 80,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "prmutv.co"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 81,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "quantcount.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 82,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "quantserve.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 83,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "rlcdn.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 84,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "rqtrk.eu"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 85,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "sc-static.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 86,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "scorecardresearch.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 87,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "smartlook.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 88,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "snap.licdn.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 89,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "statcounter.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 90,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "static.ads-twitter.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 91,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "stats.wp.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 92,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "tapad.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 93,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "tr.snapchat.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 94,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "treasuredata.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 95,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "trk.pinterest.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 96,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "udc.yahoo.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 97,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "udcm.yahoo.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 98,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "zeotap.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 99,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "zi-scripts.com"
+      ],
+      "domainType": "thirdParty"
+    }
+  },
+  {
+    "id": 100,
     "priority": 2,
     "action": {
       "type": "redirect",
@@ -459,7 +1304,7 @@
     }
   },
   {
-    "id": 36,
+    "id": 101,
     "priority": 2,
     "action": {
       "type": "redirect",

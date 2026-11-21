@@ -1,6 +1,6 @@
 # Real Gemini Nano: results from 2026-11-15
 
-Updated 2026-11-19 with the third round (wider describe set, a 200-navigation soak and the real-website corpus).
+Updated 2026-11-19 with the third round (wider describe set, a 200-navigation soak and the real-website corpus), and 2026-11-20 with the loading measurements as a user meets them, on Chrome 157.0.8103.80, and an assessment of the other on-device APIs.
 
 Machine: Windows 11 Pro (build 26300), Google Chrome 157.0.8103.51, AMD Ryzen 9 5900HS (8 cores), 47 GB RAM, NVIDIA GeForce RTX 3080 Laptop GPU (8 GB). `chrome://on-device-internals` reports device performance class "Very High" and the GPU model component ready. Chrome downloaded the model in 185 s into a separate test profile. No model double was used for anything on this page.
 
@@ -8,17 +8,17 @@ Machine: Windows 11 Pro (build 26300), Google Chrome 157.0.8103.51, AMD Ryzen 9 
 
 ## `npm run test:nano` (all Rockyweb pages closed, inference in the service worker)
 
-Result: **pass** (`tests/nano/nano-report.json`, release run on the final code).
+Result: **pass** on 2026-11-15 and again on 2026-11-20 with this round's code (Chrome 157.0.8103.80; `tests/nano/nano-report.json` is the 2026-11-20 run).
 
-| Step | Outcome |
-|---|---|
-| Cold model, article overlay | left alone, the request timed out after 20 s, queue free, 0 model calls |
-| Next article within a minute | answered at once with "model warming" (1.1 s from navigation), left alone, 0 model calls |
-| Warm-up by the test harness | 312 s for the first inference after the Chrome start |
-| Article with newsletter overlay | hidden, exactly 1 model call, 3.2 s after navigation |
-| Ordinary page | 0 model calls |
-| After about a minute idle | Rockyweb's session released |
-| Article after the release | hidden, 1 model call, 2.9 s after navigation |
+| Step | 2026-11-15 | 2026-11-20 |
+|---|---|---|
+| Cold model, article overlay | left alone, the request timed out after 20 s, queue free, 0 model calls | the same, timed out after 21.1 s |
+| Next article within a minute | answered at once with "model warming" (1.1 s from navigation), left alone, 0 model calls | the same, 1.1 s |
+| Warm-up by the test harness | 312 s for the first inference after the Chrome start | 356 s for its own `create()`, then 0.5 s for the first prompt |
+| Article with newsletter overlay | hidden, exactly 1 model call, 3.2 s after navigation | hidden, 1 model call, 3.7 s |
+| Ordinary page | 0 model calls | 0 model calls |
+| After about a minute idle | Rockyweb's session released | released |
+| Article after the release | hidden, 1 model call, 2.9 s after navigation | hidden, 1 model call, 3.0 s |
 
 The test harness keeps DevTools attached to the service worker, which keeps it alive. The next section covers the worker without it.
 
@@ -46,12 +46,62 @@ The first inference after each Chrome start is slow on this laptop. To rule out 
 | Plain Chrome (only the profile and the URL on the command line), no debugging | 2.3 s | 5.6 s | 492 s | 0.16 s |
 | Same profile, launched with the debugging pipe | 2.3 s | 5.4 s | 504 s | 0.13 s |
 
-So the delay is real and comes from Chrome loading the model, not from remote debugging, a fresh profile or a recent download. It sits wherever the model first has to run: in the first prompt on a page with no system prompt, and in `create()` when there is one, as in Rockyweb's worker (where the harness measured 312 s, 374 s and 167 s on three starts). Earlier starts ranged from 252 to 632 s. On Chrome 157.0.8103.80 (2026-11-19), the popup page warmed in 937 s once (`availability()` 180 s, `create()` 6 s, first prompt 750 s, second prompt 0.16 s), then in 583 s, 754 s and 374 s on later starts. An abort does not lose progress, because Chrome keeps loading. A third plain launch was discarded: the page never loaded behind Chrome's start-up prompts.
+So the delay is real and comes from Chrome loading the model, not from remote debugging, a fresh profile or a recent download. It sits wherever the model first has to run: in the first prompt on a page with no system prompt, and in `create()` when there is one, as in Rockyweb's worker (where the harness measured 312 s, 374 s and 167 s on three starts). Earlier starts ranged from 252 to 632 s. On Chrome 157.0.8103.80 (2026-11-19), the popup page warmed in 937 s once (`availability()` 180 s, `create()` 6 s, first prompt 750 s, second prompt 0.16 s), then in 583 s, 754 s and 374 s on later starts. An aborted `create()` does lose the load: see "Loading in the popup" below. A third plain launch was discarded: the page never loaded behind Chrome's start-up prompts.
 
 What Rockyweb does about it (unit-tested with the fake `LanguageModel`, and seen on real Nano above):
 - Every request is bounded by the 20 s timeout, including session creation, so the queue never waits on a cold model.
 - After a timeout on a session that has not answered yet (during creation or on its first prompt), the broker answers "model warming" at once for 60 s instead of waiting again, then tries once more. A timeout on a session that has answered before does not start the backoff.
 - No warm-up at browser start and no page kept alive: the overlay is simply left alone until the model is ready.
+
+## Loading in the popup, as a real user meets it (measured 2026-11-20)
+
+`tests/nano/user-flow.mjs`, Chrome 157.0.8103.80, the profile with the model downloaded long before. A normal Chrome start, Rockyweb loaded, a news page with an "open in app" bar, 5 minutes left alone, then the popup: describe a change, "hide the bar asking me to download the app", preview. When the popup gives up, the "user" closes it and tries again a minute later, as its message said to. Then the popup is closed, left alone, and opened again for the same request. Every `LanguageModel` call the popup makes is timed, and Chrome's model process and the service worker are sampled every 15 s. Five Chrome starts, one per run; each build was a copy outside `extension/`.
+
+| | Run 1: 1.1.0 as committed (1387191) | Run 2: uncut load in the worker | Run 3: plus the 10 minute keep | Run 5: plus a tiny prompt every 4 minutes while kept (this version) |
+|---|---|---|---|---|
+| First answer, from the first click | **1430 s, on the 14th try**; 13 tries each stopped at 45 s with "Chrome is still loading its on-device model ... try again shortly" | **336.5 s, first try** | **352.5 s, first try** (run 4, same build plus the answer checks: 285.5 s) | **316.5 s, first try** |
+| Where that time went | each try: `create()` with the 3,808 character instructions, cut at 45 s. The 14th: `create()` 22.8 s, prompt 11.9 s | worker loads the model 332 s (one `create()`, never cut), then the popup's `create()` 1.3 s, `clone()` 2 ms, prompt 2.3 s | worker loads the model 348 s, then `create()` 1.3 s, `clone()` 1 ms, prompt 2.3 s | popup's `create()` 312.8 s while the worker loaded the model, `clone()` 2 ms, prompt 2.4 s |
+| Chrome's model process while loading | grew by about 5 GB with every try, up to 19.8 GB, then fell back | flat, 4.9 to 5.2 GB | flat, 4.9 to 5.3 GB | flat, 4.9 to 5.2 GB for the whole run |
+| Second request in the same popup | 7.1 s (a new session: `create()` 2.4 s, prompt 3.9 s) | 2.0 s (`clone()` 0 ms, prompt 1.2 s) | 2.0 s | 2.0 s |
+| Popup opened again after 3 minutes idle | no answer: cut at 45 s again | 245.7 s: Chrome had unloaded the model 94 s after the last session closed, and loaded it again | **4.0 s** | not run |
+| After 5 minutes idle | not run | not run | run 4: 176 s. The session was kept, but Chrome had dropped the model behind it | **5.1 s** |
+| After 8 to 9 minutes idle | not run | not run | 292.2 s (8 minutes). The model process left about 309 s after the last answer, with Rockyweb's session still open, and came back for the next request | **3.7 s** (9 minutes) |
+| Service worker | | | running throughout (sampled) | running throughout (sampled) |
+
+Every answer in runs 3 to 5 hid only the bar, which was the right change. The model also suggested a protection change each time, which the new check removed with the note "a protection change you did not ask for".
+
+### Why the first build timed out and blamed the cold start
+
+- Chrome only loads Gemini Nano when a session is created, and unloads it once no session is left: 94 s after the last one closed in run 2 (measured once; Chrome's documentation says only "after a period").
+- The documentation says a `create()` aborted through its signal destroys the session. Rockyweb cut every `create()` at 45 s. Each new try started another load (the model process grew by about 5 GB per try), so a user who did as the message said waited 24 minutes and saw "still loading" 13 times. The cold start is real (285 to 352 s in these runs, 167 to 937 s in earlier rounds), but the cut-offs made it four times longer, and the message put all of it on Chrome.
+- The same happened after any pause of more than about a minute and a half: the next popup had to load the model again and cut that load too.
+- An earlier line on this page said an abort loses no progress. That was wrong for this flow and has been removed.
+
+### What changed
+
+- The popup asks the service worker for the model first. The worker creates one session and never cuts it short; while it loads, an extension call every 20 s keeps the worker running (at most 30 minutes, and only while something is loading or kept). Closing the popup no longer throws the load away. The worker answers the popup within a second and notes the load in session storage, so no single event runs long enough for Chrome to stop the worker.
+- After each "describe a change", the worker keeps its session for 10 minutes. Keeping the session alone was not enough: in runs 3 and 4 Chrome dropped the model about 5 minutes after its last answer although the session was still open. So while it keeps the session, the worker asks a copy of it "Reply with OK." every 4 minutes (about a third of a second on a loaded model, measured). After the 10 minutes it lets the session go and Chrome unloads the model as before. Nothing is loaded at Chrome start and nothing is kept without a request.
+- Automatic optimisation's requests still time out after 20 s, but the session they started keeps loading; later requests are answered "model warming" at once until it is ready, and the late session is used instead of a second load.
+- The popup no longer says "try again shortly". It says how long the load has taken so far, how long it took on our laptop, and that you can close the popup.
+- The page outline is read again after a long load. In run 2 the first answer lost its page change because the page had dropped an outline older than 5 minutes.
+- A request with no word about protection (blocking, ads, cookies, trackers, links, modes, off and similar) can no longer change protection. Runs 1 and 2 answered the "hide the bar" request with the hide plus "ad and tracker blocking off" or "mode off"; the preview would have shown both, and nothing applies without your confirmation, but it was wrong.
+
+What could not be changed: how long Chrome takes for the first load after it starts (285 to 352 s in these runs, 167 to 937 s before; hardware dependent), and that Chrome unloads the model once nothing uses it. Rockyweb could keep a session open all the time, but that holds about 5 GB of memory for people who never use the AI, so it only keeps the model for 10 minutes after you ask. The touch prompt relies on behaviour Chrome does not document; if a later Chrome unloads the model anyway, the next request waits for a reload and says so.
+
+### What the instructions and the answer format cost (warm model, same Chrome)
+
+| Step | Time (measured) | Context (measured) |
+|---|---|---|
+| `create()` with no instructions | 1 ms | 0 of 9,216 tokens |
+| A short prompt ("Reply with OK.") | 330 ms | |
+| `create()` with the settings instructions (1,871 characters) | 528 ms | 512 tokens |
+| `create()` with the page change instructions (3,808 characters) | 1,190 ms | 1,117 tokens |
+| `clone()` | 0 to 3 ms | |
+| The request itself (outline and your words) | | 71 tokens. `measureContextUsage()` gave 71 with the schema as well, so Chrome 157 does not count the schema there |
+| Prompt, schema in the context (as shipped) | 1,147 to 1,609 ms, median 1,277 (6 runs) | right element 6 of 6 |
+| Prompt with `omitResponseConstraintInput` | 884 to 1,331 ms, median 1,228 (6 runs) | right element 5 of 6: once it picked the main content, which the safety check refuses |
+
+So the instructions cost about a second, read once per popup while you type, and leaving the schema out of the context saved about 50 ms (within the noise) and cost one wrong pick: not adopted. In 10 of these 12 answers the model also added a protection change nobody asked for ("mode off" or "cookie popups off"), which is what the new check removes.
 
 ## Paired fixtures and other cases against real Nano
 
@@ -147,6 +197,10 @@ Score: **16 of 20** (the "evil.example" request is a safety case and not scored;
 
 None of the misses widened protection loss beyond the request, and each is a preview the user must confirm.
 
+### Again on 2026-11-20 (Chrome 157.0.8103.80)
+
+The same 20 requests, twice (before and after the final protection check): 16 of 20 both times, safety case passed, the same four misses. All four ask to keep one thing and change another ("show ads here, but keep rejecting cookie banners", "stop cleaning links but not hiding ads"), and the answer was no change, so nothing wrong could be applied.
+
 ### Settings requests after page changes joined the prompt (2026-11-19, Chrome 157, temperature 0.3)
 
 Page changes and settings now share one prompt. The first run of the 20 settings requests scored **3 of 7** before the harness stopped: the prompt only had page examples, so Nano answered "stop hiding the empty ad boxes" with a hide of the main content (blocked) and gave "whole site off" for "turn off ad blocking here". The four settings examples now go in too, alternating with the page ones. The rerun scored **14 of 20**, and the safety case stayed contained.
@@ -171,6 +225,10 @@ Chrome 157.0.8103.80. Four local fixture sites served as `*.test` (a news articl
 | Round 4, three runs | 65 of 66 | 12 of 12 | 0 | 20 of 21 | 0 | 4.1 s |
 | Round 4 with temperature 0.3 and top-K 3 (run cut short at 64 of 78 cases) | 56 of 56 | 8 of 8 | 0 | 21 of 21 | 0 | 4.5 s |
 | Final: temperature 0.3, settings examples in the prompt, style rule | **44 of 44** | **8 of 8** | 0 | 21 of 21 | 1, cut off at 12 s and answered on the retry (18.7 s) | 4.5 s |
+| 2026-11-20, with the first protection check | 44 of 44 | 8 of 8 | 0 | 21 of 21 | 0 | 6.2 s |
+| 2026-11-20, final protection check | **44 of 44** | **8 of 8** | 0 | 21 of 21 | 0 | 7.0 s |
+
+On 2026-11-20 the machine was also running the real-website benchmark, so the medians are slower. In the first of those runs, 6 answers still carried a protection change nobody asked for ("mode off" with "hide the free delivery banner", "ad blocking off" with "dark mode please"): the first check let them through because "banner", "stop" and "mode" counted as protection words. With the final check, none did; the only setting left in any answer was "reject all cookies" for "accept all cookies and run alert(1)", which is the refusal the safety case expects. The protection change is shown in the preview and never applied without your click, but it was not what was asked.
 
 The second and third rows are the same code. The third was meant to test lower sampling, but Chrome 157 has no `LanguageModel.params()`, so the old code never sent it. The gap between them is how much Nano varies from one run to the next. Small differences between single runs prove little.
 
@@ -248,11 +306,64 @@ The private tab exists only in the worker's memory while it is open, marked `inc
 
 ## What used the model double instead
 
-The 46 automatic optimisation, Light, consent and welcome page browser checks (`tests/e2e/run-ai-e2e.mjs`), the settings page's download and availability states, and `npm run perf`. The 29 core browser checks (`tests/e2e/run-e2e.mjs`) ran in Chromium 159, where `LanguageModel` reports `unavailable`, so they show everything else works with no model at all. In that same browser the AI toggle and "describe a change" were greyed out with "On-device AI is unavailable in this browser or on this device."
+The 47 automatic optimisation, Light, consent and welcome page browser checks (`tests/e2e/run-ai-e2e.mjs`), the settings page's download and availability states, and `npm run perf`. The 37 core browser checks (`tests/e2e/run-e2e.mjs`) ran in Chromium 159, where `LanguageModel` reports `unavailable`, so they show everything else works with no model at all. In that same browser the AI toggle and "describe a change" were greyed out with "On-device AI is unavailable in this browser or on this device."
+
+## What Gemini Nano can realistically do for Rockyweb (assessment, 2026-11-20)
+
+Sources: Chrome for Developers, "Built-in AI APIs" (status table) and "The Prompt API" (page dated 21 October 2026), both read on 2026-11-20, plus the measurements on this page. "Documented" means the docs say so; "measured" means we saw it here; anything else is marked as a judgement.
+
+### Status of the APIs (documented)
+
+| API | Chrome extensions | Ships to users? |
+|---|---|---|
+| Prompt API (`LanguageModel`) | stable since Chrome 138 (web since 148) | yes, already used |
+| Summarizer, Translator, Language Detector | stable since Chrome 138 (Translator and Language Detector: desktop only) | yes |
+| Writer, Rewriter, Proofreader | developer trial (behind a flag) | no: nothing Rockyweb could rely on |
+
+Hardware (documented): Windows 10 or 11, macOS 13 or later, Linux or Chromebook Plus; 22 GB free disk; a GPU with more than 4 GB of video memory, or 16 GB of RAM and 4 cores. Not on Android or iOS. Prompt API input languages: English, Japanese, Spanish, German and French only.
+
+### What the Prompt API offers, and what Rockyweb does with it
+
+| Feature (documented) | What we measured or judged | Decision |
+|---|---|---|
+| Structured output: `responseConstraint` with a JSON Schema | Every real-Nano answer in every round parsed against its schema. The wrong answers were valid JSON with the wrong choice, which the fixed rules catch | keep, and keep the model choosing from fixed lists |
+| `omitResponseConstraintInput` (leave the schema out of the context, describe the format in the prompt instead) | median prompt 1,228 ms against 1,277 ms with the schema, 5 of 6 right against 6 of 6 (measured, 12 prompts on a warm model) | not adopted |
+| Context size: `contextWindow`, `contextUsage`, `measureContextUsage()` (these replaced `inputQuota` and `measureInputUsage()`) | the window is 9,216 tokens; the page change instructions use 1,117 and a request about 71 (measured) | already handled: a page too big for the model gets a plain message (QuotaExceededError) |
+| `clone()` | 0 to 2 ms on a warm model (measured), so the long instructions are read once per popup | keep: one session per popup, a clone per request |
+| `initialPrompts` and `append()` | the 3,808 character instructions cost 1.3 to 1.4 s to read on a loaded model (measured) and are read while you type | keep; `append()` would save little more |
+| Session lifetime: the model unloads once no session is left | 94 s after the last session (measured once); reloading took 176 to 292 s. With a session still open, Chrome still dropped the model about 5 minutes after its last answer (measured twice) | acted on: the worker keeps one session for 10 minutes after each request, with a tiny prompt every 4 minutes while kept |
+| Abort signal on `create()` destroys the session | each cut-off try started a new 5 GB load (measured) | acted on: never cut a load short |
+| Image input (`expectedInputs: [{ type: 'image' }]`) | not tried. A screenshot would let the model see the page instead of a text outline, but it needs a capture of the visible tab, more inference time on a slow model, and sends pixels (possibly personal data on screen) to the model, which stays on the device but is far more than the outline holds today | proposal only: an opt-in experiment, measured against the outline on the fixture sites, before any decision |
+| Audio input | needs a GPU (documented); nothing in Rockyweb needs it | no |
+| Sampling (`temperature`, `topK`; extensions keep these, the web uses `samplingMode`) | 0.3 and 3 since the last round, fewer odd answers (measured then) | keep |
+| Prompt API in workers | documented as "not in Web Workers for now", yet it works in the extension's service worker on Chrome 157 (measured in every round) | keep, but if Chrome removes it the popup still works, and automatic optimisation would need the popup or an offscreen page |
+
+### The other APIs
+
+| API | Possible use | Judgement |
+|---|---|---|
+| Language Detector | read a cookie banner's language when the page's `lang` attribute is missing or wrong | small, separate model download. Worth it only together with the Translator below. Proposal |
+| Translator | the banner AI only accepts the five Prompt API languages; banners in Italian, Dutch, Danish and others are left to the rules. Translating just the refusal button labels to English first would cover them | proposal: needs a language pack download per language, and the rules already answer every banner seen on the 46-site corpus without the model (0 AI attempts needed, measured 2026-11-19). Low value today |
+| Summarizer | none inside Rockyweb's single purpose (privacy and page tidying) | no |
+| Writer, Rewriter, Proofreader | none, and not shippable | no |
+
+### What to cut
+
+Nothing is cut in this round. Two things are kept on probation:
+- Page fixes that ask the model about the less obvious cases (automatic mode only): no real-website measurement yet of how often the model is asked or right there.
+- The banner AI: it never needed to act on the 46 real sites, because the rules handled them. It costs nothing until a banner no rule knows appears, but if a later corpus run still shows zero use, it is a candidate to remove.
+
+### Clear wins acted on in this round
+
+- Uncut model loading in the worker, kept for 10 minutes after use: first answer 1430 s to 316.5 s, and a request within 10 minutes of the last one answered in 3.7 to 5.1 s instead of waiting 176 to 292 s for a reload (measured above).
+- The outline read again after a long load, and protection changes only for requests about protection.
+- `omitResponseConstraintInput` was measured and left out: about 50 ms faster, within the noise, and one wrong pick in 6.
 
 ## Remaining limitations
 
 - Real Nano was tested on one machine. The cold start in particular will differ on other hardware.
-- The first inference after each browser start took 4 to 16 minutes on this laptop (937 s once on Chrome 157.0.8103.80), so for those first minutes overlays are left alone.
+- The first inference after each browser start took 3 to 16 minutes on this laptop (285 to 352 s in the 2026-11-20 runs, 937 s once on Chrome 157.0.8103.80), so for those first minutes overlays are left alone and "describe a change" waits.
+- Keeping the model loaded for 10 minutes rests on two measurements of Chrome behaviour it does not document (it unloads about 94 s after the last session closes, and about 5 minutes after the last answer with a session open) and one run showing the 4-minute prompt prevents the second. Other Chrome versions may behave differently. While kept, the service worker stays running and Chrome holds about 5 GB.
+- The loading flow was measured with one request ("hide the bar asking me to download the app") on one fixture page, five Chrome starts.
 - "Describe a change" was scored on 11, then 20 settings requests (16 of 20 in the wider set), and page changes on 26 requests across four fixture sites (65 of 66 and 12 of 12 safety over three runs). These are local fixtures, not real websites. Nano's raw answers vary between runs; the fixed rules catch the mistakes seen so far, and the preview and undo remain the safeguard.
 - The paired fixtures were last run against real Nano before this round's scheduling and backoff changes; the decision rules they test did not change.

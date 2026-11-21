@@ -8,6 +8,7 @@ importScripts(
   'shared/cosmetic-lists.js',
   'shared/ai-policy.js',
   'shared/page-edits.js',
+  'shared/sync.js',
   'engines/cmp-main-world.js',
   'engines/ai-broker.js'
 );
@@ -79,6 +80,7 @@ async function update(mutator, keys, opts) {
   state = next;
   configCache = new Map();
   await persist(keys);
+  if (!(opts && opts.fromSync) && keys.some((k) => SYNC_STATE_KEYS.includes(k))) scheduleSync();
   if (!opts || opts.rules !== false) await syncRules();
   if (!opts || !opts.quiet) {
     refreshOpenTabs();
@@ -87,9 +89,124 @@ async function update(mutator, keys, opts) {
   return state;
 }
 
+// ---- optional Chrome sync (off by default, shared/sync.js). Never trackers, stats or Incognito sites.
+
+const SYNC_LOCAL_KEY = 'syncState';
+const SYNC_STATE_KEYS = ['globalDefaultTier', 'globalCustomConfig', 'siteProfiles', 'aiSettings', 'pageEdits'];
+const SYNC_DELAY = 5000; // at most one write every few seconds, well inside 120 a minute and 1800 an hour
+let syncState = null;
+let syncChain = Promise.resolve();
+let syncTimer = 0;
+
+async function loadSyncState() {
+  if (syncState) return syncState;
+  const raw = (await chrome.storage.local.get(SYNC_LOCAL_KEY).catch(() => ({})))[SYNC_LOCAL_KEY];
+  syncState = Object.assign({ enabled: false, device: '', base: null, prefsAt: 0, lastPrefs: '', lastSyncAt: 0, lastError: '', bytes: 0, skipped: 0, backoffUntil: 0 },
+    raw && typeof raw === 'object' ? raw : {});
+  return syncState;
+}
+
+const saveSyncState = () => chrome.storage.local.set({ [SYNC_LOCAL_KEY]: syncState }).catch(noop);
+
+function scheduleSync(delay) {
+  if (syncState && !syncState.enabled) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => { runSync('change'); }, delay === undefined ? SYNC_DELAY : delay);
+}
+
+function runSync(reason) {
+  syncChain = syncChain.then(() => syncOnce(reason)).catch((err) => {
+    warn('sync failed', err);
+    if (syncState) {
+      syncState.lastError = String((err && err.message) || err).slice(0, 200);
+      syncState.backoffUntil = Date.now() + 60000;
+      saveSyncState();
+      scheduleSync(60000);
+    }
+  });
+  return syncChain;
+}
+
+async function syncOnce(reason) {
+  await loadState();
+  const ss = await loadSyncState();
+  if (!ss.enabled) return;
+  if (reason !== 'enable' && Date.now() < ss.backoffUntil) { scheduleSync(ss.backoffUntil - Date.now()); return; }
+  const local = RW.syncView(state);
+  const prefsText = JSON.stringify(local.prefs);
+  if (prefsText !== ss.lastPrefs) ss.prefsAt = Date.now();
+  const items = await chrome.storage.sync.get(null);
+  const remote = RW.decodeSync(items);
+  // Chrome sync can bring the pieces one at a time: wait for the rest.
+  if (remote && remote.partial) { scheduleSync(10000); return; }
+  const merged = remote ? RW.mergeSync(ss.base, local, remote.view, { localPrefsAt: ss.prefsAt, remotePrefsAt: remote.prefsAt }) : local;
+  if (!RW.sameSyncView(merged, local)) {
+    await update((st) => RW.applySyncView(st, merged), SYNC_STATE_KEYS, { fromSync: true });
+  }
+  const prefsAt = JSON.stringify(merged.prefs) === prefsText ? ss.prefsAt : (remote ? remote.prefsAt : ss.prefsAt);
+  const enc = RW.encodeSync(merged, { device: ss.device, at: Date.now(), prefsAt });
+  if (!enc.fits) throw new Error('sync_quota');
+  if (!remote || enc.hash !== remote.meta.hash) {
+    await chrome.storage.sync.set(enc.items);
+    const stale = RW.syncStaleKeys(items, enc.items);
+    if (stale.length) await chrome.storage.sync.remove(stale);
+  }
+  Object.assign(ss, { base: enc.view, prefsAt, lastPrefs: JSON.stringify(merged.prefs), lastSyncAt: Date.now(), lastError: '', bytes: enc.bytes, skipped: enc.skipped, backoffUntil: 0 });
+  await saveSyncState();
+}
+
+function syncStatus() {
+  const ss = syncState || {};
+  const privateSites = Object.values((state && state.siteProfiles) || {}).filter((p) => p.private).length;
+  return { enabled: !!ss.enabled, lastSyncAt: ss.lastSyncAt || 0, lastError: ss.lastError || '', bytes: ss.bytes || 0, quota: RW.SYNC_TOTAL_MAX, skipped: ss.skipped || 0, privateSites };
+}
+
+// Another device changed the synced copy.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !Object.keys(changes).some((k) => k.startsWith(RW.SYNC_PREFIX))) return;
+  loadSyncState().then((ss) => {
+    const meta = changes[RW.SYNC_META_KEY] && changes[RW.SYNC_META_KEY].newValue;
+    if (!ss.enabled || (meta && meta.device === ss.device)) return;
+    scheduleSync(1500);
+  });
+});
+loadSyncState().then((ss) => { if (ss.enabled) scheduleSync(3000); }).catch(noop);
+
+// A site changed from an Incognito window is marked, so it is never synced.
+async function markPrivateChanges(beforeProfiles, beforeEdits) {
+  const changed = new Set();
+  for (const [k, p] of Object.entries(state.siteProfiles)) if (beforeProfiles[k] !== p && !p.private) changed.add(k);
+  for (const k of Object.keys(state.pageEdits || {})) if ((beforeEdits || {})[k] !== state.pageEdits[k]) changed.add(k);
+  for (const k of changed) {
+    if (state.siteProfiles[k] && state.siteProfiles[k].private) continue;
+    await update((st) => RW.markSitePrivate(st, k), ['siteProfiles'], { rules: false, quiet: true });
+  }
+}
+
 // ---- automatic optimisation (model broker, per-tab cancellation)
 
-const broker = RW.createAiBroker();
+// Chrome's first model load after it starts can take many minutes. While one is going, an extension
+// call every 20 s keeps this worker from being stopped, so the load is not thrown away; at most 30
+// minutes, and never while nothing is loading.
+let holding = 0;
+let holdTimer = 0;
+function holdWorker(promise) {
+  holding++;
+  if (!holdTimer) holdTimer = setInterval(() => { chrome.runtime.getPlatformInfo(() => void chrome.runtime.lastError); }, 20000);
+  let done = false;
+  const stop = () => {
+    if (done) return;
+    done = true;
+    if (--holding <= 0) { holding = 0; clearInterval(holdTimer); holdTimer = 0; }
+  };
+  const cap = setTimeout(stop, 30 * 60000);
+  promise.then(() => {}, () => {}).finally(() => { clearTimeout(cap); stop(); });
+}
+// For the popup's loading line: when the model became ready and first answered in this Chrome session.
+const noteModelLoad = (e) => { RW.aiLoadNote(e.answered ? { answeredAt: Date.now() } : { readyAt: Date.now() }); };
+const brokerOptions = (extra) => Object.assign({ hold: holdWorker, onLoad: noteModelLoad }, extra);
+
+const broker = RW.createAiBroker(brokerOptions());
 
 // Unknown cookie banners: one broker per page language, each asking the model with that language as
 // an expected input, so availability() says whether the language is supported.
@@ -99,13 +216,13 @@ const consentStats = { attempts: 0, verified: 0, failed: 0 };
 function consentBrokerFor(lang) {
   if (!consentBrokers.has(lang)) {
     if (consentBrokers.size >= 16) return null;
-    consentBrokers.set(lang, RW.createAiBroker({
+    consentBrokers.set(lang, RW.createAiBroker(brokerOptions({
       systemPrompt: RW.AI_CONSENT_SYSTEM_PROMPT,
       modelOptions: {
         expectedInputs: [{ type: 'text', languages: lang === 'en' ? ['en'] : ['en', lang] }],
         expectedOutputs: [{ type: 'text', languages: ['en'] }]
       }
-    }));
+    })));
   }
   return consentBrokers.get(lang);
 }
@@ -531,7 +648,7 @@ const isIncognito = (sender) => !!(sender.tab && sender.tab.incognito);
 
 // Proactive fixes ask a model with their own instructions; the broker is made on first use.
 let fixBroker = null;
-const fixBrokerFor = () => fixBroker || (fixBroker = RW.createAiBroker({ systemPrompt: RW.PAGE_FIX_SYSTEM_PROMPT }));
+const fixBrokerFor = () => fixBroker || (fixBroker = RW.createAiBroker(brokerOptions({ systemPrompt: RW.PAGE_FIX_SYSTEM_PROMPT })));
 
 const editsFor = (siteKey) => RW.pageEditsFor(state, siteKey);
 const editCss = (edit) => RW.buildPageEditCss(edit);
@@ -955,6 +1072,22 @@ const HANDLERS = {
     }
   },
 
+  // The popup asks for the model before it reads its own long instructions. The load runs here, so
+  // closing the popup does not stop it. The reply comes within a second; a longer load is reported
+  // through chrome.storage.session (warmAt), since Chrome stops a worker whose message runs past 5 minutes.
+  [A.AI_WARM]: {
+    from: [FROM_PAGE],
+    fn: async () => {
+      if (!broker.hasSession) await RW.aiLoadNote({ loadingSince: Date.now() });
+      // Kept for 10 minutes after each use, with the worker, so the next request is quick.
+      const warming = broker.warm(RW.AI_KEEP_WARM_MS).then((r) => {
+        if (r.ok) holdWorker(new Promise((done) => setTimeout(done, Math.max(0, broker.keptUntil - Date.now()))));
+        RW.aiLoadNote({ warmAt: Date.now(), warm: r.ok ? 'ready' : r.reason });
+        return r;
+      });
+      return (await Promise.race([warming, new Promise((done) => setTimeout(() => done(null), 1000))])) || { ok: false, reason: 'loading' };
+    }
+  },
   [A.GET_AI_STATUS]: {
     from: [FROM_PAGE],
     fn: async () => ({
@@ -1376,10 +1509,51 @@ const HANDLERS = {
     }
   },
 
+  [A.SET_SYNC]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      const ss = await loadSyncState();
+      if (p.enabled === true) {
+        // Turning it on is a first merge: both sides kept, the newer of each site wins.
+        Object.assign(ss, { enabled: true, base: null, lastError: '', backoffUntil: 0 });
+        if (!ss.device) ss.device = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
+        await saveSyncState();
+        await runSync('enable');
+      } else {
+        clearTimeout(syncTimer);
+        Object.assign(ss, { enabled: false, base: null });
+        await saveSyncState();
+      }
+      return { sync: syncStatus() };
+    }
+  },
+
+  [A.GET_SYNC_STATUS]: {
+    from: [FROM_PAGE],
+    fn: async () => { await loadSyncState(); return { sync: syncStatus() }; }
+  },
+
+  // Removes Rockyweb's copy from Chrome sync and turns sync off on this device.
+  [A.CLEAR_SYNC_COPY]: {
+    from: [FROM_PAGE],
+    fn: async () => {
+      const ss = await loadSyncState();
+      clearTimeout(syncTimer);
+      Object.assign(ss, { enabled: false, base: null, bytes: 0, skipped: 0, lastSyncAt: 0 });
+      await saveSyncState();
+      const items = await chrome.storage.sync.get(null);
+      const mine = Object.keys(items).filter((k) => k.startsWith(RW.SYNC_PREFIX));
+      if (mine.length) await chrome.storage.sync.remove(mine);
+      return { sync: syncStatus() };
+    }
+  },
+
   [A.RESET_ALL]: {
     from: [FROM_PAGE],
     fn: async () => {
       cancelAllAi();
+      clearTimeout(syncTimer);
+      syncState = null;
       tabs.clear();
       clearTimeout(tabsTimer);
       tabsTimer = 0;
@@ -1408,8 +1582,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
   const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {};
+  // The popup says when it belongs to an Incognito tab; content scripts are known from their tab.
+  const privateContext = isIncognito(sender) || (kind === FROM_PAGE && payload.private === true);
+  let before = null;
   ready()
-    .then(() => handler.fn(payload, sender, kind))
+    .then(() => { before = privateContext ? [state.siteProfiles, state.pageEdits] : null; return handler.fn(payload, sender, kind); })
+    .then(async (res) => { if (before) await markPrivateChanges(before[0], before[1]); return res; })
     .then((res) => sendResponse(Object.assign({ ok: true }, res)))
     .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
   return true; // async response

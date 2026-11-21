@@ -19,10 +19,21 @@
   --font: "Lexend Deca", ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* type scale: every font size in the UI is one of these */
+  --fs-xs: 11px;   /* tags, tiny labels */
+  --fs-s: 12px;    /* notes, meta lines, small controls */
+  --fs-m: 13px;    /* secondary text, buttons, popup body */
+  --fs-base: 14px; /* body */
+  --fs-l: 15px;    /* setting titles */
+  --fs-xl: 18px;   /* popup stat words */
+  --fs-2xl: 20px;  /* popup site name */
+  --fs-3xl: 24px;  /* page titles */
+  --fs-4xl: 28px;  /* big numbers in the popup, welcome title */
+  --fs-5xl: 44px;  /* statistics page numbers */
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--text); font: 400 14px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 400 var(--fs-base)/1.4 var(--font); -webkit-font-smoothing: antialiased; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 [hidden] { display: none !important; }
@@ -37,13 +48,13 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 
 /* config bar: rounded strip of text buttons, active one in the main colour */
 .bar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px 6px; border-radius: var(--radius); background: var(--sub-alt); }
-.bar button { border: 0; background: none; padding: 5px 8px; border-radius: var(--radius-s); color: var(--sub-dim); font-size: 13px; transition: color 0.12s; }
+.bar button { border: 0; background: none; padding: 5px 8px; border-radius: var(--radius-s); color: var(--sub-dim); font-size: var(--fs-m); transition: color 0.12s; }
 .bar button:hover { color: var(--text); }
 .bar button[aria-checked="true"] { color: var(--main); }
 .bar[aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
 
 /* settings buttons: filled when active */
-.btn { border: 0; height: 32px; padding: 0 14px; border-radius: var(--radius); background: var(--sub-alt); color: var(--text); font-size: 13px; white-space: nowrap; transition: background 0.12s, color 0.12s; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn { border: 0; height: 32px; padding: 0 14px; border-radius: var(--radius); background: var(--sub-alt); color: var(--text); font-size: var(--fs-m); white-space: nowrap; transition: background 0.12s, color 0.12s; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .btn:hover { background: var(--text); color: var(--bg); }
 .btn[aria-checked="true"], .btn.on { background: var(--main); color: var(--bg); }
 .btn svg { width: 14px; height: 14px; }
@@ -61,7 +72,7 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 
 /* per-domain 3-way choice */
 .tri { display: inline-flex; gap: 0; padding: 2px; border-radius: 8px; background: var(--sub-alt); }
-.tri button { border: 0; background: none; padding: 3px 7px; border-radius: 6px; font-size: 11.5px; color: var(--sub-dim); }
+.tri button { border: 0; background: none; padding: 3px 7px; border-radius: 6px; font-size: var(--fs-s); color: var(--sub-dim); }
 .tri button:hover { color: var(--text); }
 .tri button[aria-checked="true"][data-v="allow"] { color: var(--sub); }
 .tri button[aria-checked="true"][data-v="cookie_block"] { color: var(--error); }
@@ -72,6 +83,20 @@ code, .mono { font-family: var(--mono); font-size: 0.88em; }
 .input::placeholder { color: var(--sub-dim); }
 .input:focus { outline: 2px solid var(--sub-alt-2); }
 .select { height: 30px; padding: 0 8px; border: 0; border-radius: var(--radius-s); background: var(--sub-alt); color: var(--text); }
+
+.input::placeholder, textarea::placeholder { color: var(--sub-dim); opacity: 0.6; }
+
+/* "i" information: a short line, the rest on hover, focus or click */
+.has-tip { position: relative; }
+.tip-btn { display: inline-grid; place-items: center; width: 18px; height: 18px; margin: -2px 0 0 2px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--sub-dim); vertical-align: middle; transition: color 0.12s; }
+.tip-btn:hover, .has-tip.open .tip-btn { color: var(--main); }
+.tip-btn svg { width: 14px; height: 14px; display: block; }
+.tip-panel { display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 20; max-width: 520px; padding: 10px 12px; border-radius: var(--radius); background: var(--sub-alt-2); color: var(--text); font-size: var(--fs-s); line-height: 1.5; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
+.tip-btn:hover ~ .tip-panel, .tip-panel:hover, .tip-btn:focus-visible ~ .tip-panel, .has-tip.open .tip-panel { display: block; }
+.has-tip.hush .tip-panel { display: none; }
+
+/* quiet label for on-device AI features */
+.exp-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--sub-dim); font-size: var(--fs-xs); font-weight: 400; line-height: 16px; letter-spacing: 0.01em; vertical-align: middle; }
 
 .sub { color: var(--sub); }
 .dim { color: var(--sub-dim); }

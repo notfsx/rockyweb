@@ -32,12 +32,14 @@
         <p class="lead">Rockyweb is already working on every website. There is nothing you have to set up.</p>
         <dl class="facts" id="welcomeFacts"></dl>
         <div class="welcome-ai" id="welcomeAi" hidden>
-          <h2>one optional extra: on-device AI</h2>
-          <p>Chrome can run a small AI model on this computer. With it, Rockyweb can make page changes you describe in the toolbar ("hide the sticky header and make the text bigger"), offer fixes for common page annoyances, and refuse cookie banners its rules don't recognise. It never accepts cookies for you, every change can be undone, and nothing leaves your device.</p>
+          <h2>one optional extra: on-device AI <span class="exp-tag" title="Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.">experimental</span></h2>
+          <p>Chrome can run a small AI model on this computer. With it, Rockyweb can make page changes you describe in the toolbar ("hide the sticky header and make the text bigger"), offer fixes for common page annoyances, and refuse cookie banners its rules don't recognise. It never accepts cookies for you, every change can be undone, and the model runs on your device.</p>
+          <p>It is new and can be slow: the first answer after Chrome starts can take several minutes while Chrome loads the model.</p>
           <p class="ai-status" id="welcomeAiStatus" role="status" aria-live="polite"></p>
           <div class="welcome-actions" id="welcomeAiActions"></div>
         </div>
         <p class="welcome-next">Change your answer to cookie popups under <a href="#cookies">cookies</a>, or see <a href="#protection">all settings</a>. The toolbar icon has a switch for each website.</p>
+        <p class="welcome-next">Rockyweb is open source: <a href="https://github.com/notfsx/rockyweb" target="_blank" rel="noopener noreferrer">github.com/notfsx/rockyweb</a></p>
       </section>
 
       <section id="protection" class="section" hidden>
@@ -51,15 +53,15 @@
         <div class="setting">
           <div class="setting-text">
             <h2>how hard Rockyweb works</h2>
-            <p id="operatingDescription"></p>
+            <div id="operatingDescription"></div>
           </div>
           <div class="setting-ctl" id="operatingButtons"></div>
         </div>
         <p class="precedence">Your explicit choices always come first, then the mode for each site, then Light, then automatic optimisation. Light never undoes a choice you made.</p>
         <div class="setting" id="aiSetting">
           <div class="setting-text">
-            <h2 id="aiTitle">automatically optimise protection for each site</h2>
-            <p>Uses Chrome's on-device AI for small adjustments: hiding an unsolicited newsletter overlay on an article, which you can undo from the toolbar, and answering a cookie banner Rockyweb does not recognise by clicking its refuse button when your cookie choices refuse something. For that, the banner's heading and button labels are given to the on-device model. Nothing leaves your device. A banner answer is listed in the toolbar; it cannot be unclicked, but the site's own cookie settings link reopens its choices.</p>
+            <h2><span id="aiTitle">automatically optimise protection for each site</span> <span class="exp-tag" title="Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.">experimental</span></h2>
+            <div id="aiDescription"></div>
             <p class="ai-status" id="aiStatus" role="status" aria-live="polite"></p>
             <div class="ai-setup" id="aiSetup" hidden></div>
           </div>
@@ -67,15 +69,15 @@
         </div>
         <div class="setting">
           <div class="setting-text">
-            <h2>let AI change pages, not only settings</h2>
-            <p>With this on, "describe a change" in the toolbar can also hide, unstick, resize and recolour parts of a page, from a list of safe changes. You see it on the page before you apply it. Every change is saved for that website, so you never have to ask twice, and listed in the toolbar and under <a href="#hidden">page changes</a>, where you can switch it off or delete it.</p>
+            <h2>let AI change pages, not only settings <span class="exp-tag" title="Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.">experimental</span></h2>
+            <div id="pageEditsDescription"></div>
           </div>
           <div class="setting-ctl" id="pageEditsToggle"></div>
         </div>
         <div class="setting">
           <div class="setting-text">
-            <h2>page fixes</h2>
-            <p id="pageFixesDescription"></p>
+            <h2>page fixes <span class="exp-tag" title="Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.">experimental</span></h2>
+            <div id="pageFixesDescription"></div>
           </div>
           <div class="setting-ctl" id="pageFixesButtons"></div>
         </div>
@@ -142,6 +144,15 @@
         <div class="setting">
           <div class="setting-text"><h2>statistics</h2><p>Counted on this device only.</p></div>
           <div class="setting-ctl"><button class="btn" id="resetStatsBtn" type="button">reset</button></div>
+        </div>
+        <div class="setting" id="syncSetting">
+          <div class="setting-text">
+            <h2>sync across your devices</h2>
+            <div id="syncDescription"></div>
+            <p class="ai-status" id="syncStatus" role="status" aria-live="polite"></p>
+            <div class="ai-setup" id="syncActions" hidden></div>
+          </div>
+          <div class="setting-ctl" id="syncToggle"></div>
         </div>
         <div class="setting">
           <div class="setting-text"><h2>export</h2><p>Every setting, website and learned tracker as <code>rockyweb-settings.json</code>.</p></div>

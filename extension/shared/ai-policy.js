@@ -221,6 +221,11 @@
   ];
   const keptKeys = (spans) => new Set(spans.flatMap((s) => KEEP_NAMES.filter(([re]) => re.test(s)).map(([, key]) => key)));
 
+  // Words that make a request about protection at all. Real Nano added "mode off" or "ad blocking
+  // off" to "hide the bar asking me to download the app", and to "hide the free delivery banner",
+  // so words page changes use too (banner, pop-up, stop, widget, everything) are not on the list.
+  const PROTECTION_WORDS = /\b(rockyweb|protect\w*|modes?|strict|balanced|off|disabl\w*|enabl\w*|paus\w*|switch\w*|allow\w*|block\w*|unblock\w*|ads?|adverts?|advertising|adblock\w*|track\w*|cookies?|consent|links?|urls?|tid(y|ying)|clean\w*|annoyances?|support\w*|broken|break\w*|work\w*|reject\w*|accept\w*)\b/i;
+
   // Deterministic checks on the model's plan against the request's own words. They only ever
   // remove changes or add notes. cfg is the site's current configuration, when known.
   function checkPlan(plan, text, cfg) {
@@ -230,6 +235,12 @@
     const notes = [];
     const spans = keepSpans(request);
     const kept = keptKeys(spans);
+    // "Dark mode" and the like are page looks, not Rockyweb modes.
+    const aboutProtection = PROTECTION_WORDS.test(String(request || '').replace(/\b(dark|night|reading|reader)\s+mode\b/gi, ''));
+    if (!aboutProtection && changes.some((c) => c.op === 'site_mode' || c.op === 'setting')) {
+      changes = changes.filter((c) => c.op !== 'site_mode' && c.op !== 'setting');
+      notes.push('a protection change you did not ask for');
+    }
     // "Off ... except / but keep X": the narrowest mode that still does X, or no mode change.
     const narrowing = changes.find((c) => c.op === 'site_mode' && (c.value === 'off' || c.value === 'consent_only'));
     if (spans.length && narrowing) {

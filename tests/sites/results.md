@@ -1,5 +1,7 @@
 # Real-website results
 
+How much tracking Rockyweb stops on these sites (third-party requests, tracker cookies, fingerprinting scripts, link parameters) is in [privacy.md](privacy.md).
+
 Baseline run: 2026-11-15 (tag `final`). Rockyweb 1.1.0, Playwright Chromium, headless, en-GB locale, an ordinary Chrome user agent.
 
 How it was run (`npm run test:sites`): one visit per site per configuration plus one reload, one site at a time with a pause between sites.
