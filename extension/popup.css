@@ -71,6 +71,12 @@ body { overflow-x: hidden; }
 .unsupported .host { font-size: var(--fs-l); color: var(--sub-dim); }
 .unsupported p { margin: 6px 0 0; font-size: var(--fs-m); color: var(--sub-dim); }
 .error { font-size: var(--fs-m); color: var(--error); }
+.dropped { padding: 18px 0 8px; text-align: center; }
+.dropped .pup { position: relative; display: inline-block; width: 64px; height: 64px; margin-bottom: 10px; }
+.dropped .pup img { display: block; }
+.dropped .ball { position: absolute; right: -22px; bottom: -2px; width: 16px; height: 16px; transform: rotate(-24deg); }
+.dropped .host { font-size: var(--fs-l); color: var(--text); }
+.dropped p { margin: 6px 0 0; font-size: var(--fs-m); color: var(--sub-dim); }
 
 /* light mode tag in the state line */
 .light-tag { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--sub-alt); color: var(--sub); font-size: var(--fs-xs); }

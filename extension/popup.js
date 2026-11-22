@@ -127,7 +127,7 @@
   function renderView() {
     main.replaceChildren();
     if (!data) {
-      main.append(h('p', { class: 'error', role: 'alert', text: errorMsg || 'Could not load Rockyweb.' }));
+      main.append(renderDropped());
       return;
     }
     if (!data.supported) {
@@ -142,6 +142,15 @@
     if (advanced) main.append(...renderAdvanced(data.config));
     else main.append(...renderMain(data.config).filter(Boolean));
     main.append(renderFoot());
+  }
+
+  // The popup could not load at all: Rocky, his ball rolled away.
+  function renderDropped() {
+    return h('div', { class: 'dropped', role: 'alert' },
+      h('div', { class: 'pup' }, h('img', { src: 'icons/rocky.png', alt: '', width: 64, height: 64 }), icon('ball', 'ball')),
+      h('div', { class: 'host', text: 'Rocky dropped the ball' }),
+      h('p', { text: 'Rockyweb could not load for this tab. Close this popup and open it again.' }),
+      errorMsg ? h('p', { class: 'dim', text: errorMsg }) : null);
   }
 
   function renderUnsupported() {
@@ -560,7 +569,7 @@
           ? 'Stopped waiting. Chrome keeps loading its model, so the next try will be quicker. Nothing was changed.'
           : 'Stopped. Nothing was changed.';
       } else if (err && err.message === 'stuck') {
-        describe.error = 'The on-device AI got stuck on that one. Nothing was changed; try rewording it.';
+        describe.error = 'Rocky dropped the ball on that one. Nothing was changed; try rewording it.';
       } else if (name === 'NotSupportedError' || name === 'NotAllowedError' || name === 'InvalidStateError') {
         describe.error = `Chrome could not start its on-device model (${name}). Nothing was changed.`;
       } else if (name === 'QuotaExceededError') {
