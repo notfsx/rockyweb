@@ -62,7 +62,7 @@ Everything stays in your browser. No servers, no accounts, no analytics, no remo
 | Asset | File |
 |---|---|
 | Store icon, 128x128 | `store/icon-128.png` |
-| Screenshots, 1280x800 (the Store takes at most 5) | `store/screenshots/1-cookie-popups.png`, `2-simple-by-default.png`, `3-hide-anything.png`, `6-page-changes.png`, `5-trackers.png`. `4-settings.png` is a spare |
+| Screenshots, 1280x800 (the Store takes at most 5) | `store/screenshots/1-simple-by-default.png`, `2-settings.png`, `3-trackers.png` |
 | Small promo tile, 440x280 | `store/promo-small-440x280.png` |
 | Marquee promo tile, 1400x560 | `store/promo-marquee-1400x560.png` |
 

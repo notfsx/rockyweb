@@ -103,7 +103,6 @@ try {
   await web.waitForFunction(() => !!document.querySelector('rockyweb-toast'), null, { timeout: 15000, polling: 100 });
   console.log(`toast after ${Date.now() - t0} ms`);
   await sleep(500);
-  const pageWithToast = await web.screenshot();
   const tabId = await ext.evaluate((u) => chrome.tabs.query({}).then((ts) => ts.find((t) => (t.url || '').startsWith(u)).id), SITE);
 
   async function popupShot(query, height) {
@@ -130,36 +129,6 @@ try {
   const optProtection = await optionsShot('protection');
   const optTrackers = await optionsShot('trackers');
 
-  // Picker hovering an ad slot.
-  await web.bringToFront();
-  await ext.evaluate((t) => chrome.tabs.sendMessage(t, { action: 'startElementPicker', payload: {} }, { frameId: 0 }), tabId);
-  const ad = await web.locator('#inline-ad').boundingBox();
-  await web.mouse.move(ad.x + 40, ad.y + 30, { steps: 4 });
-  await sleep(300);
-  const pickerShot = await web.screenshot();
-  await web.keyboard.press('Escape');
-
-  // Saved page changes for the demo site: the page restyled, and the popup list that undoes them.
-  await importSeed({ ...seed, pageEdits: { 'thedailybark.test': [
-    { id: 'shot0001', label: 'bigger text in sepia', request: 'make the text bigger and easier on the eyes', source: 'described', ops: [{ op: 'text_size', selector: 'page', value: 115 }, { op: 'colours', selector: 'page', value: 'sepia' }], settings: [], enabled: true, createdAt: now },
-    { id: 'shot0002', label: 'hide the sidebar', request: 'hide the sidebar', source: 'described', ops: [{ op: 'hide', selector: 'aside.side' }], settings: [], enabled: true, createdAt: now },
-    { id: 'shot0003', label: 'stop the header following the page', source: 'automatic', fix: 'tall_sticky_header', ops: [{ op: 'unstick', selector: 'header' }], settings: [], enabled: false, createdAt: now }
-  ] } });
-  await web.reload({ waitUntil: 'load' });
-  await sleep(4500);
-  const editedShot = await web.screenshot();
-  const popupChanges = await (async () => {
-    const p = await context.newPage();
-    await p.setViewportSize({ width: 340, height: 420 });
-    await p.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}`);
-    await sleep(700);
-    await p.locator('section.changes .adj-toggle').click();
-    await sleep(300);
-    const buf = await p.screenshot({ fullPage: true });
-    await p.close();
-    return buf;
-  })();
-
   // ---- composition
   const font = (w) => `@font-face { font-family: L; font-weight: ${w}; src: url(data:font/woff2;base64,${b64(path.join(EXT_DIR, 'ui', 'fonts', `lexend-deca-${w}.woff2`))}); }`;
   const BASE = `${font(400)} ${font(500)} * { box-sizing: border-box; } body { margin: 0; background: #1f1914; color: #f3e9dc; font-family: L, sans-serif; overflow: hidden; }
@@ -185,40 +154,20 @@ try {
       <div style="flex:1;display:flex;justify-content:center;align-items:center;gap:28px">${right}</div>
     </div>`;
 
-  await compose(path.join(SHOTS, '1-cookie-popups.png'), 1280, 800, `
-    <img src="${img(pageWithToast)}" style="position:absolute;inset:0;width:1280px;height:800px;filter:saturate(.9)">
-    <img class="ui" src="${img(popupMain)}" style="position:absolute;top:20px;right:28px;width:340px">
-    <div style="position:absolute;left:84px;top:262px;padding:22px 28px;border-radius:16px;background:rgba(31,25,20,.94);max-width:560px">
-      <div class="h" style="font-size:34px">Cookie popups, <em>answered your way</em></div>
-      <div class="s" style="font-size:16px;margin-top:8px">Your choices applied on every site. No more clicking "reject all".</div></div>`);
-
-  await compose(path.join(SHOTS, '2-simple-by-default.png'), 1280, 800, split(
+  await compose(path.join(SHOTS, '1-simple-by-default.png'), 1280, 800, split(
     'One switch per site. <em>The rest is one click away.</em>',
     'Protection mode and live stats up front. Per-engine controls and per-domain choices behind the gear.',
     `<img class="ui" src="${img(popupMain)}" style="width:340px;align-self:flex-start;margin-top:120px"><img class="ui" src="${img(popupAdvanced)}" style="width:340px">`));
 
-  await compose(path.join(SHOTS, '3-hide-anything.png'), 1280, 800, `
-    <img src="${img(pickerShot)}" style="position:absolute;inset:0;width:1280px;height:800px">
-    <div style="position:absolute;right:40px;top:250px;padding:22px 28px;border-radius:16px;background:rgba(31,25,20,.94);max-width:380px">
-      <div class="h" style="font-size:34px">Hide anything <em>with a click</em></div>
-      <div class="s" style="font-size:16px;margin-top:8px">Point at a banner, click, done. Rockyweb remembers it for that site, and undo is one key away.</div></div>`);
-
-  await compose(path.join(SHOTS, '4-settings.png'), 1280, 800, `
+  await compose(path.join(SHOTS, '2-settings.png'), 1280, 800, `
     <div style="padding:56px 72px 0"><div class="h" style="font-size:36px">Five modes, <em>you pick per site</em></div>
     <div class="s" style="font-size:17px;margin-top:8px">Off, consent only, balanced, strict or your own custom mix.</div></div>
     <img class="ui" src="${img(optProtection)}" style="position:absolute;left:90px;top:210px;width:1100px">`);
 
-  await compose(path.join(SHOTS, '5-trackers.png'), 1280, 800, `
+  await compose(path.join(SHOTS, '3-trackers.png'), 1280, 800, `
     <div style="padding:56px 72px 0"><div class="h" style="font-size:36px">Trackers <em>learned</em>, not just listed</div>
     <div class="s" style="font-size:17px;margin-top:8px">Anything that follows you across 3 sites loses its cookies. Everything stays on your device.</div></div>
     <img class="ui" src="${img(optTrackers)}" style="position:absolute;left:90px;top:210px;width:1100px">`);
-
-  await compose(path.join(SHOTS, '6-page-changes.png'), 1280, 800, `
-    <img src="${img(editedShot)}" style="position:absolute;inset:0;width:1280px;height:800px">
-    <img class="ui" src="${img(popupChanges)}" style="position:absolute;top:20px;right:28px;width:340px">
-    <div style="position:absolute;left:64px;bottom:56px;padding:22px 28px;border-radius:16px;background:rgb(31,25,20);max-width:600px">
-      <div class="h" style="font-size:34px">Describe a change. <em>It stays, and it undoes.</em></div>
-      <div class="s" style="font-size:16px;margin-top:8px">Bigger text, calmer colours, no sidebar. Saved for the site, listed with a switch, never asked twice.</div></div>`);
 
   await compose(path.join(OUT, 'promo-small-440x280.png'), 440, 280, `
     <div style="display:flex;height:100%;align-items:center;gap:22px;padding:0 30px">
