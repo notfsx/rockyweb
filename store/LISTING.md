@@ -20,6 +20,10 @@ Upload `dist/rockyweb-1.1.0.zip`. The script runs the verification checks first 
 
 **Language:** English
 
+**Homepage URL:** https://github.com/notfsx/rockyweb
+
+**Support URL:** https://github.com/notfsx/rockyweb/issues
+
 **Description:**
 
 ```
@@ -34,13 +38,13 @@ Known ad networks, analytics domains, session recorders and advertising pixels a
 ONE SWITCH PER SITE
 Every site gets a simple on/off switch and five modes: off, consent only, balanced (the default), strict, or your own custom mix. Something broken? Turn the site down a notch and carry on. The gear icon opens per-engine switches and an allow / cookies / block choice for every third-party domain on the page.
 
-QUIETLY OPTIMISED FOR EACH SITE (OPTIONAL)
+QUIETLY OPTIMISED FOR EACH SITE (OPTIONAL, EXPERIMENTAL)
 Turn on automatic optimisation once and Rockyweb uses Chrome's on-device AI for two small jobs. On articles you are reading, it can hide an unsolicited newsletter overlay that covers the story; on every other kind of page (shops, sign-in, checkout, search, apps) overlays are left as they are. And when a cookie banner is one Rockyweb's built-in rules do not recognise, it can find the button that refuses, following your cookie choices; buttons that accept, open settings, subscribe or pay are removed before the AI sees anything, so it can never pick them. It never interrupts you, every change is listed in the toolbar (overlays can be undone; a banner answer points you to the site's own cookie settings), and nothing leaves your device. Needs a computer that supports Chrome's built-in AI; the first article after Chrome starts can take a few minutes while Chrome loads the model, and until then overlays are simply left alone. Everything else works without it.
 
-DESCRIBE A CHANGE, AND IT STAYS
+DESCRIBE A CHANGE, AND IT STAYS (EXPERIMENTAL)
 Type what bothers you ("make the text bigger and hide the sticky header", "dark colours on this site") and Rockyweb shows the change live on the page before you confirm. It can hide parts of the page, unstick headers, resize text, narrow wide columns, change colours and fonts, stop animations and pause autoplaying video, going beyond the settings menus. Every change is saved for that site, listed in the toolbar with a switch and a delete button, and reapplied on your next visit, so you never describe the same change twice. A safety check skips any saved change that would hide the main content or a form you are using, and cookie notices, sign-in, payment and age checks are never touched.
 
-PAGE FIXES, SUGGESTED OR AUTOMATIC
+PAGE FIXES, SUGGESTED OR AUTOMATIC (EXPERIMENTAL)
 Rockyweb spots common annoyances (an "open in app" bar, a video that follows you down the page, a page that will not scroll, an oversized sticky header) and suggests a one-click fix. Switch to automatic and the sure ones are fixed as the page loads. Every fix can be undone, and a fix you dismiss is never suggested again.
 
 LIGHT MODE
@@ -58,7 +62,7 @@ Everything stays in your browser. No servers, no accounts, no analytics, no remo
 | Asset | File |
 |---|---|
 | Store icon, 128x128 | `store/icon-128.png` |
-| Screenshots, 1280x800 | `store/screenshots/1-cookie-popups.png` to `6-page-changes.png` |
+| Screenshots, 1280x800 (the Store takes at most 5) | `store/screenshots/1-cookie-popups.png`, `2-simple-by-default.png`, `3-hide-anything.png`, `6-page-changes.png`, `5-trackers.png`. `4-settings.png` is a spare |
 | Small promo tile, 440x280 | `store/promo-small-440x280.png` |
 | Marquee promo tile, 1400x560 | `store/promo-marquee-1400x560.png` |
 
@@ -89,7 +93,7 @@ Rockyweb protects privacy while browsing: it answers cookie consent popups with 
 - I do not use or transfer user data for purposes unrelated to my item's single purpose.
 - I do not use or transfer user data to determine creditworthiness or for lending purposes.
 
-**Privacy policy URL:** once the repository is public, link `PRIVACY.md` on GitHub (the file's page on the default branch). Until then, publish it as a GitHub Pages page or a public gist.
+**Privacy policy URL:** https://github.com/notfsx/rockyweb/blob/main/PRIVACY.md (works once the repository is public).
 
 ## 5. Notes for the reviewer (optional field)
 
@@ -99,8 +103,8 @@ No login needed. A welcome tab opens once after install; it only offers Chrome's
 
 ## 6. Before you submit
 
-- [x] `npm run check` and `npm run test:e2e` pass (2026-11-19, for 1.1.0)
-- [x] `npm run test:nano` passes on a machine with Chrome's on-device AI (real model, all Rockyweb pages closed; 2026-11-19, see `tests/nano/results.md`)
+- [x] `npm run check`, `npm run test:e2e`, `npm run test:a11y` and `npm run test:upgrade` pass (2026-11-21, for 1.1.0)
+- [x] `npm run test:nano` passes on a machine with Chrome's on-device AI (real model, all Rockyweb pages closed; 2026-11-20, see `tests/nano/results.md`)
 - [ ] Version in `extension/manifest.json` bumped for every new upload
-- [ ] Privacy policy published and linked
+- [ ] Repository public, so the privacy policy URL opens
 - [ ] Developer account has a verified contact email
