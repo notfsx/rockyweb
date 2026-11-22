@@ -12,7 +12,7 @@ The loadable extension is the **`extension/`** folder. Everything else is toolin
 
 Chrome 116 or newer. No build step is needed.
 
-A fresh install opens a short welcome page (`options.html#welcome`): what already works without any setup, and, only when Chrome reports that this computer can run its on-device model, an offer to download it. Nothing downloads until you click. Updates never open it.
+A fresh install opens a short welcome page (`options.html#welcome`): what already works without any setup, and, only when Chrome reports that this computer can run its on-device model, a note that on-device AI is off and where to turn it on. Nothing downloads from it. Updates never open it.
 
 ## Using it
 
@@ -22,9 +22,20 @@ A fresh install opens a short welcome page (`options.html#welcome`): what alread
 - **Changes on this site (popup):** every page change you described and every page fix, each with on, off and delete.
 - **Settings page:** default mode, cookie choices, custom mode, websites, learned trackers, page changes, and data (stats, export, import, reset).
 
-## Automatic optimisation (optional, on-device AI)
+## On-device AI: off by default, heavy on purpose
 
-Off by default. Turn on "automatically optimise protection for each site" on the settings page and Rockyweb quietly makes small, reversible, page-scoped adjustments where the right answer depends on context. Two are shipped:
+Everything in Rockyweb works without AI. On-device AI is a separate, experimental switch under settings, AI, and it is not meant for low-powered computers or for light browsing:
+
+- **Turning it on is deliberate.** The switch opens a short explanation of the cost and a box to tick ("I understand it keeps a lot of memory busy and uses more battery") before "turn on" (or "download and turn on") works. The welcome page only mentions it. "Describe a change" in the popup points to this page until AI is on.
+- **Kept loaded (default while on).** From the moment Chrome starts, the service worker loads Gemini Nano and holds one session open, asks it a one-word question every 4 minutes so Chrome does not unload it, and keeps itself running with an extension call every 20 s (Chrome stops an idle worker after 30 s). A one-minute `chrome.alarms` alarm starts all of this again if Chrome stopped the worker anyway. Google's own guidance is to keep one empty session alive so the model stays ready. Switch "keep the model loaded" off to go back to loading on first use and letting go 10 minutes later.
+- **Start Chrome at sign-in (recommended while on).** An optional `background` permission, requested only from that switch, makes Chrome start in the background when you sign in to your computer and keep running after its last window closes, so the model can be loaded before you open a window. It depends on Chrome's "Continue running background apps when Google Chrome is closed" setting. Turning AI off removes the permission.
+- Light mode pauses all of it. Turning AI off cancels every request and lets the model go.
+
+Not verified yet (this design is provisional): how long the model stays loaded over hours with the 4-minute question, the memory and battery cost of keeping it loaded, and Chrome actually starting at sign-in with the `background` permission on each platform.
+
+### Automatic optimisation
+
+Off by default, and only available with on-device AI on. Turn on "automatically optimise protection for each site" under settings, AI, and Rockyweb quietly makes small, reversible, page-scoped adjustments where the right answer depends on context. Two are shipped:
 
 - **Newsletter overlays:** hiding an unsolicited newsletter overlay on an article, while leaving the same kind of form alone on account, login and checkout pages, when you opened it yourself, or while you are typing in it.
 - **Cookie banners no rule recognises:** only after the consent platform APIs, the button rules and the wording rules have all given up on a banner that still looks like consent, and only when your cookie choices refuse something. Rockyweb removes every button that accepts, opens settings, saves, subscribes, pays, signs in, postpones or leaves the page (in 14 languages, by label and by attributes), and the model may pick one of what is left as the refusal, or leave the banner. Rockyweb rechecks the page, clicks once, and verifies: the banner went away, the page did not navigate, and readable consent storage changed. A failed check is recorded and never retried on that site. A verified answer is remembered for the site by its button labels. Top frame only; never on a banner you opened yourself, in Light mode or in Incognito; per site, "don't answer cookie banners for me on this site" turns it off. A click cannot be undone, so the toolbar lists it and points to the site's own cookie settings link.
@@ -192,7 +203,7 @@ tests/          unit tests and the end-to-end suite
 - The stand-in scripts are web accessible, which lets a page detect that the extension is installed.
 - The browser suites (`npm run test:e2e`) and `npm run perf` use a deterministic model double in place of `LanguageModel`. Real inference is covered by `npm run test:nano` (see below).
 - After every Chrome start, Chrome loads Gemini Nano the first time something asks for it: 285 to 352 s on the test laptop in the latest runs (measured, three Chrome starts; 167 to 937 s in earlier rounds, and it depends on the hardware). "Describe a change" waits for it, says so, and the load goes on if you close the popup. Automatic optimisation leaves overlays alone until the model is ready (each request gives up after 20 s, later ones are answered at once while the load goes on).
-- Chrome unloads the model about a minute and a half after the last session closes (measured once: 94 s), and drops it about 5 minutes after its last answer even with a session open (measured twice). Loading it again took 176 to 292 s. Rockyweb keeps a session for 10 minutes after each "describe a change" and asks it a tiny question every 4 minutes meanwhile: a request 5 and 9 minutes later answered in 5.1 and 3.7 s (measured once). After the 10 minutes, the next request waits for a reload. This relies on Chrome behaviour that is not documented. Rockyweb does not load the model when Chrome starts.
+- Chrome unloads the model about a minute and a half after the last session closes (measured once: 94 s), and drops it about 5 minutes after its last answer even with a session open (measured twice). Loading it again took 176 to 292 s. Rockyweb keeps a session for 10 minutes after each "describe a change" and asks it a tiny question every 4 minutes meanwhile: a request 5 and 9 minutes later answered in 5.1 and 3.7 s (measured once). After the 10 minutes, the next request waits for a reload. This relies on Chrome behaviour that is not documented. With "keep the model loaded" on (the default once on-device AI is on), Rockyweb loads the model when Chrome starts and keeps it, as described under [On-device AI](#on-device-ai-off-by-default-heavy-on-purpose).
 - While the model is loaded, Chrome's own model process holds about 5 GB of memory and 3 GB of video memory, and during the 10 minute keep Rockyweb's service worker stays running.
 - Sync was checked with unit tests and a browser check that plays the part of a second computer by writing Chrome's sync storage directly. Two real computers signed in to one Google account were not tested, nor Chrome's own sync timing between them.
 

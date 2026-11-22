@@ -27,10 +27,14 @@
     "service_worker": "background.js"
   },
   "permissions": [
+    "alarms",
     "declarativeNetRequest",
     "scripting",
     "storage",
     "webRequest"
+  ],
+  "optional_permissions": [
+    "background"
   ],
   "host_permissions": [
     "<all_urls>"

@@ -82,6 +82,7 @@ async function update(mutator, keys, opts) {
   await persist(keys);
   if (!(opts && opts.fromSync) && keys.some((k) => SYNC_STATE_KEYS.includes(k))) scheduleSync();
   if (!opts || opts.rules !== false) await syncRules();
+  if (keys.includes('aiSettings') || keys.includes('operatingMode')) syncModelKeep().catch(noop);
   if (!opts || !opts.quiet) {
     refreshOpenTabs();
     announceSettingsChange();
@@ -251,6 +252,37 @@ function cancelAllAi() {
   for (const tabId of [...aiJobs.keys()]) cancelAiForTab(tabId);
   for (const b of [broker, ...consentBrokers.values()]) { b.cancelQueued(); b.release(); }
 }
+
+// ---- on-device AI kept loaded (only once the user turned AI on, with "keep the model loaded")
+// Chrome unloads the model a while after its last session goes, and loading it again took minutes
+// (measured). So from Chrome's start this worker holds one pinned session, which the broker touches
+// every few minutes, and keeps itself running: an extension call every 20 s resets Chrome's 30 s
+// idle timer. A one-minute alarm starts it all again if Chrome stopped the worker anyway.
+const KEEP_ALARM = 'rw-ai-keep';
+let keepPing = 0;
+let keepLoading = null;
+const wantModelKept = () => !!(state && state.aiSettings.enabled && state.aiSettings.keepLoaded && state.operatingMode !== 'light');
+
+async function syncModelKeep() {
+  await loadState();
+  if (!wantModelKept()) {
+    broker.pin(false);
+    clearInterval(keepPing);
+    keepPing = 0;
+    await chrome.alarms.clear(KEEP_ALARM).catch(noop);
+    return;
+  }
+  broker.pin(true);
+  if (!keepPing) keepPing = setInterval(() => { chrome.runtime.getPlatformInfo(() => void chrome.runtime.lastError); }, 20000);
+  if (!(await chrome.alarms.get(KEEP_ALARM).catch(() => null))) chrome.alarms.create(KEEP_ALARM, { periodInMinutes: 1 });
+  if (broker.hasSession || keepLoading) return;
+  if ((await broker.availability()) !== 'available') return; // never downloads; the next alarm looks again
+  await RW.aiLoadNote({ loadingSince: Date.now() });
+  keepLoading = broker.warm()
+    .then((r) => RW.aiLoadNote({ warmAt: Date.now(), warm: r.ok ? 'ready' : r.reason }))
+    .finally(() => { keepLoading = null; });
+}
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === KEEP_ALARM) syncModelKeep().catch(noop); });
 
 // Tell open tabs that settings changed so they drop stale work (debounced).
 let announceTimer = 0;
@@ -592,6 +624,8 @@ chrome.webRequest.onSendHeaders.addListener(onSendHeaders, WEB_FILTER, ['request
 chrome.webRequest.onHeadersReceived.addListener(onHeadersReceived, WEB_FILTER, ['responseHeaders', 'extraHeaders']);
 chrome.webRequest.onErrorOccurred.addListener(onRequestError, WEB_FILTER);
 loadState().then(applyObservationMode).catch(noop);
+// Every worker start (Chrome starting, an alarm, any event): load the model again if the user keeps it loaded.
+loadState().then(syncModelKeep).catch(noop);
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   cancelAiForTab(tabId);
@@ -1078,6 +1112,7 @@ const HANDLERS = {
   [A.AI_WARM]: {
     from: [FROM_PAGE],
     fn: async () => {
+      if (!state.aiSettings.enabled) return { ok: false, reason: 'ai_off' };
       if (!broker.hasSession) await RW.aiLoadNote({ loadingSince: Date.now() });
       // Kept for 10 minutes after each use, with the worker, so the next request is quick.
       const warming = broker.warm(RW.AI_KEEP_WARM_MS).then((r) => {
@@ -1093,12 +1128,26 @@ const HANDLERS = {
     fn: async () => ({
       availability: await broker.availability(),
       preference: !!state.aiSettings.autoOptimise,
+      enabled: !!state.aiSettings.enabled,
+      kept: broker.pinned,
       operatingMode: state.operatingMode,
       stats: Object.assign({}, broker.stats),
       consent: Object.assign({ languages: [...consentBrokers.keys()] }, consentStats),
       hasSession: broker.hasSession,
       pending: broker.pending
     })
+  },
+
+  // The switch for all on-device AI. Off also lets Chrome stop starting at sign-in for Rockyweb.
+  [A.SET_AI_ENABLED]: {
+    from: [FROM_PAGE],
+    fn: async (p) => {
+      const enabled = p.enabled === true;
+      if (!enabled) cancelAllAi();
+      await update((st) => RW.setAiEnabled(st, enabled), ['aiSettings'], { rules: false });
+      if (!enabled) await chrome.permissions.remove({ permissions: ['background'] }).catch(noop);
+      return {};
+    }
   },
 
   [A.SET_AI_AUTO_OPTIMISE]: {
@@ -1298,7 +1347,7 @@ const HANDLERS = {
   [A.SET_AI_PAGE_SETTINGS]: {
     from: [FROM_PAGE],
     fn: async (p) => {
-      await update((st) => RW.setAiPageSettings(st, { pageEdits: p.pageEdits, pageFixes: p.pageFixes }), ['aiSettings'], { rules: false });
+      await update((st) => RW.setAiPageSettings(st, { pageEdits: p.pageEdits, pageFixes: p.pageFixes, keepLoaded: p.keepLoaded }), ['aiSettings'], { rules: false });
       return {};
     }
   },

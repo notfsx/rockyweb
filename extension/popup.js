@@ -331,6 +331,7 @@
     const caps = data.capabilities || {};
     if (cfg.newsletterPrompts === 'hide') return 'newsletter overlays are hidden here because you chose to';
     if (cfg.newsletterPrompts === 'keep') return 'Rockyweb leaves newsletter prompts alone here';
+    if (!cfg.aiEnabled) return 'on-device AI is off (settings, AI)';
     if (!cfg.aiPreference) return 'automatic optimisation is off (turn it on in settings)';
     if (caps.aiPausedReason === 'light') return 'AI is paused in Light mode';
     if (caps.aiPausedReason === 'incognito') return 'automatic optimisation does not run in Incognito';
@@ -627,6 +628,14 @@
 
   function renderDescribe(cfg) {
     const sec = h('section', { class: 'section describe' });
+    // On-device AI is off until the user turns it on in settings: the row only points there.
+    if (!cfg.aiEnabled) {
+      sec.append(h('button', {
+        class: 'describe-toggle', type: 'button',
+        onclick: () => { chrome.tabs.create({ url: chrome.runtime.getURL('options.html#ai') }).finally(() => window.close()); }
+      }, h('span', {}, 'describe a change', experimental()), h('span', { class: 'dim', text: 'needs on-device AI' })));
+      return sec;
+    }
     const btn = h('button', {
       class: 'describe-toggle', type: 'button', 'aria-expanded': String(describe.open),
       onclick: () => {

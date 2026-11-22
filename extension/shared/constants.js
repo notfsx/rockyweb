@@ -48,6 +48,7 @@
     SET_AI_AUTO_OPTIMISE: 'setAiAutoOptimise',
     GET_AI_STATUS: 'getAiStatus',
     AI_WARM: 'aiWarm',
+    SET_AI_ENABLED: 'setAiEnabled',
     SET_SITE_NEWSLETTER: 'setSiteNewsletter',
     AI_UNDO_ADJUSTMENT: 'aiUndoAdjustment',
     AI_SITE_OPT_OUT: 'aiSiteOptOut',

@@ -130,7 +130,7 @@ test('proactive fixes: never on consent, sign-in, payment, paywalls or anti-adbl
 
 test('settings: page edits on and fixes suggested by default; a site can opt out; never in Light or Incognito', () => {
   const s = RW.createDefaultState();
-  assert.deepEqual(s.aiSettings, { autoOptimise: false, pageEdits: true, pageFixes: 'suggest' });
+  assert.deepEqual(s.aiSettings, { enabled: false, keepLoaded: true, autoOptimise: false, pageEdits: true, pageFixes: 'suggest' });
   const caps = (st, ctx) => RW.runtimeCapabilities(RW.getEffectiveConfig(st, 'a.com'), ctx);
   assert.equal(caps(s).pageFixes, 'suggest');
   assert.equal(caps(RW.setOperatingMode(s, 'light')).pageFixes, 'off');
@@ -140,7 +140,8 @@ test('settings: page edits on and fixes suggested by default; a site can opt out
   const auto = RW.setAiPageSettings(s, { pageFixes: 'auto' });
   assert.equal(caps(auto).pageFixes, 'auto');
   assert.equal(caps(auto).pageFixAi, false, 'the model only with automatic optimisation on');
-  assert.equal(caps(RW.setAiAutoOptimise(auto, true)).pageFixAi, true);
+  assert.equal(caps(RW.setAiAutoOptimise(auto, true)).pageFixAi, false, 'not until on-device AI is on');
+  assert.equal(caps(RW.setAiAutoOptimise(RW.setAiEnabled(auto, true), true)).pageFixAi, true);
   assert.equal(RW.setAiAutoOptimise(auto, true).aiSettings.pageFixes, 'auto', 'turning AI on keeps the other AI settings');
   assert.throws(() => RW.setAiPageSettings(s, { pageFixes: 'always' }), /invalid_value/);
 });

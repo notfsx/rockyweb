@@ -207,11 +207,11 @@ test('new installs are silent; a saved notification preference is kept', () => {
   assert.equal(v1.globalCustomConfig.showToastBadge, true);
   assert.equal(v1.siteProfiles['a.com'].tier, 'strict');
   assert.equal(v1.operatingMode, 'full');
-  assert.deepEqual(v1.aiSettings, { autoOptimise: false, pageEdits: true, pageFixes: 'suggest' });
+  assert.deepEqual(v1.aiSettings, { enabled: false, keepLoaded: true, autoOptimise: false, pageEdits: true, pageFixes: 'suggest' });
 });
 
 test('runtimeCapabilities: one precedence for Light, AI, Incognito and explicit choices', () => {
-  let s = RW.setAiAutoOptimise(RW.createDefaultState(), true);
+  let s = RW.setAiAutoOptimise(RW.setAiEnabled(RW.createDefaultState(), true), true);
   const caps = (st, host, ctx) => RW.runtimeCapabilities(RW.getEffectiveConfig(st, host), ctx);
   assert.deepEqual(caps(s, 'a.com'), { consent: 'full', learning: true, headerObservation: true, newsletter: 'ai', ai: true, consentAi: true, aiPausedReason: null, pageFixes: 'suggest', pageFixAi: false });
   const light = RW.setOperatingMode(s, 'light');
@@ -232,9 +232,10 @@ test('runtimeCapabilities: one precedence for Light, AI, Incognito and explicit 
 });
 
 test('runtimeCapabilities: AI for unknown cookie banners is gated by mode, privacy, intent and site choice', () => {
-  const on = RW.setAiAutoOptimise(RW.createDefaultState(), true);
+  const on = RW.setAiAutoOptimise(RW.setAiEnabled(RW.createDefaultState(), true), true);
   const caps = (st, ctx) => RW.runtimeCapabilities(RW.getEffectiveConfig(st, 'a.com'), ctx).consentAi;
   assert.equal(caps(on), true);
+  assert.equal(caps(RW.setAiEnabled(on, false)), false, 'off with on-device AI off');
   assert.equal(caps(RW.createDefaultState()), false, 'off unless automatic optimisation is on');
   assert.equal(caps(RW.setOperatingMode(on, 'light')), false, 'never in Light');
   assert.equal(caps(on, { incognito: true }), false, 'never in Incognito');
@@ -252,6 +253,23 @@ test('runtimeCapabilities: AI for unknown cookie banners is gated by mode, priva
   // The code switch wins over every setting.
   RW.AI_CONSENT_ENABLED = false;
   try { assert.equal(caps(on), false); } finally { RW.AI_CONSENT_ENABLED = true; }
+});
+
+test('on-device AI is off by default, turned on on purpose, and gates automatic optimisation', () => {
+  const s = RW.createDefaultState();
+  assert.equal(RW.getEffectiveConfig(s, 'a.com').aiEnabled, false);
+  // Automatic optimisation on its own does nothing until AI is on.
+  const auto = RW.setAiAutoOptimise(s, true);
+  assert.equal(RW.getEffectiveConfig(auto, 'a.com').aiPreference, false);
+  const on = RW.setAiEnabled(auto, true);
+  assert.equal(RW.getEffectiveConfig(on, 'a.com').aiEnabled, true);
+  assert.equal(RW.getEffectiveConfig(on, 'a.com').aiPreference, true);
+  assert.equal(on.aiSettings.keepLoaded, true, 'kept loaded unless the user says otherwise');
+  assert.equal(RW.setAiPageSettings(on, { keepLoaded: false }).aiSettings.keepLoaded, false);
+  // Saved before the switch existed: automatic optimisation on means AI was already chosen.
+  assert.equal(RW.normalizeState({ aiSettings: { autoOptimise: true } }).aiSettings.enabled, true);
+  assert.equal(RW.normalizeState({ aiSettings: { autoOptimise: false } }).aiSettings.enabled, false);
+  assert.equal(RW.normalizeState({ aiSettings: { enabled: false, autoOptimise: true } }).aiSettings.enabled, false);
 });
 
 test('AI memory keeps a verified cookie banner answer with its label, and drops malformed ones', () => {
