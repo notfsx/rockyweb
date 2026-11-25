@@ -118,6 +118,7 @@ try {
   // Turn AI on through the real message handler, then close every Rockyweb page.
   const opt = await context.newPage();
   await opt.goto(`chrome-extension://${extId}/options.html`);
+  await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiEnabled', payload: { enabled: true } }));
   await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiAutoOptimise', payload: { enabled: true } }));
   // Fresh memory for the lab sites, so every case is decided now.
   await opt.evaluate(() => chrome.storage.local.set({ aiMemory: {} }));

@@ -67,6 +67,7 @@ try {
   const msg = (a, p) => opt.evaluate(([x, y]) => chrome.runtime.sendMessage({ action: x, payload: y }), [a, p]);
   const A = await opt.evaluate(() => window.RockyShared.ACTIONS);
   await msg(A.SET_OPERATING_MODE, { mode: 'full' });
+  await msg(A.SET_AI_ENABLED, { enabled: true });
   await msg(A.SET_AI_AUTO_OPTIMISE, { enabled: true });
   await opt.evaluate(() => chrome.storage.local.set({ aiMemory: {} }));
   const t = Date.now();

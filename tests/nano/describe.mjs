@@ -35,6 +35,7 @@ try {
   await site.goto(`http://shop.test:${PORT}/`);
   const pop = await ctx.newPage();
   await pop.goto(`chrome-extension://${id}/popup.html`);
+  await pop.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiEnabled', payload: { enabled: true } }));
   const tabId = await pop.evaluate((u) => chrome.tabs.query({}).then((ts) => ts.find((x) => (x.url || '').startsWith(u)).id), `http://shop.test:${PORT}/`);
   // Each case: the request and what the preview must show (lines other than "Everything else stays").
   const offOnly = (re) => (L) => L.length >= 1 && L.every((l) => re.test(l));

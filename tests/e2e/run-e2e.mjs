@@ -588,14 +588,14 @@ try {
   });
 
   await check('long descriptions: a short line, the rest behind "i" by hover, focus, click and Escape, described for screen readers', async () => {
-    const p = await settingsPage('protection');
-    const tip = p.locator('#aiDescription .has-tip');
+    const p = await settingsPage('ai');
+    const tip = p.locator('#aiMasterDescription .has-tip');
     const btn = tip.locator('.tip-btn');
     const panel = tip.locator('.tip-panel');
     assert.equal(await panel.isVisible(), false);
     assert.match(await btn.getAttribute('aria-label'), /^More about /);
     const described = await btn.evaluate((b) => document.getElementById(b.getAttribute('aria-describedby')).textContent);
-    assert.match(described, /cookie settings link/);
+    assert.match(described, /Nothing is sent to any server/);
     await btn.hover();
     assert.equal(await panel.isVisible(), true, 'hover');
     await p.mouse.move(0, 0);
@@ -612,16 +612,19 @@ try {
     assert.equal(await panel.isVisible(), true, 'a click or tap keeps it open');
     await p.locator('h1:visible, h2:visible').first().click();
     assert.equal(await panel.isVisible(), false, 'a click elsewhere closes it');
+    await p.goto(`chrome-extension://${extId}/options.html#protection`);
+    await p.waitForSelector('#operatingDescription .tip-btn');
     assert.ok(await p.locator('#pageFixesDescription .tip-btn').count() === 1 && await p.locator('#operatingDescription .tip-btn').count() === 1);
     await p.close();
   });
 
   await check('every AI feature carries a quiet "experimental" label; settings and welcome link to the repository', async () => {
-    const p = await settingsPage('protection');
-    const tags = await p.evaluate(() => [...document.querySelectorAll('.exp-tag')].map((t) => t.closest('h2').textContent.replace('experimental', '').trim()));
-    for (const want of ['automatically optimise protection for each site', 'let AI change pages, not only settings', 'page fixes', 'one optional extra: on-device AI']) {
-      assert.ok(tags.includes(want), want);
-    }
+    const p = await settingsPage('ai');
+    const tags = await p.evaluate(() => [...document.querySelectorAll('.exp-tag')].map((t) => t.closest('h1, h2').textContent.replace('experimental', '').trim()));
+    for (const want of ['on-device AI', 'page fixes', 'on-device AI is off']) assert.ok(tags.includes(want), want);
+    // The AI features sit on the AI page, under its label.
+    const onAiPage = await p.evaluate(() => ['aiMasterToggle', 'aiKeepToggle', 'aiStartToggle', 'aiToggle', 'pageEditsToggle'].every((id) => !!document.querySelector('#ai #' + id)));
+    assert.equal(onAiPage, true);
     await p.goto(`chrome-extension://${extId}/options.html#data`);
     await p.waitForSelector('#aboutPanel a');
     assert.equal(await p.locator('#aboutPanel a').getAttribute('href'), 'https://github.com/notfsx/rockyweb');

@@ -162,10 +162,11 @@ try {
       if (!/^y/i.test(ok)) { report.result = 'download_declined'; save(); process.exit(0); }
       // The click on the settings page is the user gesture Chrome requires for the download.
       const opt = await context.newPage();
-      await opt.goto(`chrome-extension://${extId}/options.html#protection`);
+      await opt.goto(`chrome-extension://${extId}/options.html#ai`);
       await sleep(800);
-      await opt.click('#aiToggle .switch');
-      await opt.click('text=download and turn on');
+      await opt.click('#aiMasterToggle .switch');
+      await opt.check('#aiMasterSetup input[type=checkbox]');
+      await opt.click('#aiMasterSetup >> text=download and turn on');
       step('download started from the settings page');
     }
     const started = Date.now();
@@ -177,9 +178,10 @@ try {
     step('model ready', { seconds: Math.round((Date.now() - started) / 1000) });
   }
 
-  // Turn automatic optimisation on, forget earlier decisions, then close every Rockyweb page.
+  // Turn on-device AI and automatic optimisation on, forget earlier decisions, then close every Rockyweb page.
   const opt = context.pages().find((p) => p.url().startsWith(`chrome-extension://${extId}/`)) || await context.newPage();
   if (!opt.url().startsWith(`chrome-extension://${extId}/`)) await opt.goto(`chrome-extension://${extId}/options.html`);
+  await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiEnabled', payload: { enabled: true } }));
   await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiAutoOptimise', payload: { enabled: true } }));
   await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'clearAiMemory', payload: {} }));
   for (const p of context.pages()) if (p.url().startsWith('chrome-extension://')) await p.close();

@@ -169,6 +169,25 @@ try {
     if (id === 'protection' || id === 'cookies') await radioKeys(o, `settings: ${id}`);
     await o.close();
   }
+
+  // The AI page's confirm step and its features, which stay hidden until AI is on.
+  let o = await context.newPage();
+  await o.addInitScript(() => { window.LanguageModel = { availability: async () => 'downloadable', create: () => new Promise(() => {}) }; });
+  await o.goto(`chrome-extension://${extId}/options.html#ai`);
+  await sleep(700);
+  await o.click('#aiMasterToggle .switch');
+  await o.waitForSelector('#aiMasterSetup input[type=checkbox]');
+  await audit(o, 'settings: ai (confirm)');
+  await keyboard(o, 'settings: ai (confirm)');
+  await o.close();
+  await msg(A.SET_AI_ENABLED, { enabled: true });
+  o = await context.newPage();
+  await o.goto(`chrome-extension://${extId}/options.html#ai`);
+  await o.waitForFunction(() => !document.getElementById('aiFeatures').hidden);
+  await audit(o, 'settings: ai (on)');
+  await keyboard(o, 'settings: ai (on)');
+  await o.close();
+  await msg(A.SET_AI_ENABLED, { enabled: false });
 } catch (e) {
   problems++;
   console.error(e);

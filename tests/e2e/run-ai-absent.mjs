@@ -66,16 +66,17 @@ try {
     assert.deepEqual(st.consent.languages, []);
   });
 
-  await check('settings: the AI toggle is greyed out with an explanation', async () => {
+  await check('settings: the on-device AI switch is greyed out with an explanation', async () => {
     await ext.reload();
     await sleep(800);
-    const ui = await ext.evaluate(() => ({ disabled: document.querySelector('#aiToggle .switch').disabled, status: document.getElementById('aiStatus').textContent }));
+    const ui = await ext.evaluate(() => ({ disabled: document.querySelector('#aiMasterToggle .switch').disabled, status: document.getElementById('aiMasterStatus').textContent }));
     assert.equal(ui.disabled, true);
-    assert.match(ui.status, /unavailable in this browser or on this device/);
+    assert.match(ui.status, /unavailable in this browser or on this computer/);
   });
 
   // Even if a synced or imported preference says on, nothing AI runs.
   await msg(A.SET_OPERATING_MODE, { mode: 'full' });
+  await msg(A.SET_AI_ENABLED, { enabled: true });
   await msg(A.SET_AI_AUTO_OPTIMISE, { enabled: true });
   const web = await context.newPage();
 

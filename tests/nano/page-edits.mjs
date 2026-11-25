@@ -181,6 +181,7 @@ try {
     for (const pg of ctx.pages()) if (pg.url().includes(id)) await pg.close().catch(() => {});
     const pop = await ctx.newPage();
     await pop.goto(`chrome-extension://${id}/popup.html`);
+    await pop.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiEnabled', payload: { enabled: true } }));
     V.sampling = await pop.evaluate(() => window.RockyShared.AI_SAMPLING || null);
     V.params = await pop.evaluate(async () => (typeof LanguageModel.params === 'function' ? LanguageModel.params() : null)).catch((e) => String(e.message));
     console.log('variant', EXT_DIR, 'sampling', JSON.stringify(V.sampling));
@@ -273,7 +274,7 @@ try {
     }
   
     // ---- page fixes, automatic mode with automatic optimisation on
-    await sw.evaluate(() => update((s) => Object.assign({}, s, { aiSettings: Object.assign({}, s.aiSettings, { autoOptimise: true, pageFixes: 'auto' }) }), ['aiSettings'])).catch((e) => console.log('settings', e.message));
+    await sw.evaluate(() => update((s) => Object.assign({}, s, { aiSettings: Object.assign({}, s.aiSettings, { enabled: true, autoOptimise: true, pageFixes: 'auto' }) }), ['aiSettings'])).catch((e) => console.log('settings', e.message));
     for (let rep = 0; rep < Number(REPS); rep++) {
       for (const [p, expect] of [['/', { header: 'unstuck', deal: 'hidden' }], ['/no', { header: 'same', notice: 'same' }]]) {
         await sw.evaluate(() => update((s) => Object.assign({}, s, { pageEdits: {} }), ['pageEdits'])).catch(() => null);

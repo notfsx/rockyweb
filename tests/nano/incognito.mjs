@@ -69,6 +69,7 @@ try {
   if (!sw) throw new Error('no answering worker after the reload');
   const W = (expr) => c.evaluate(sw, expr);
   await W(`(async () => {
+    await HANDLERS[A.SET_AI_ENABLED].fn({ enabled: true });
     await HANDLERS[A.SET_AI_AUTO_OPTIMISE].fn({ enabled: true });
     await HANDLERS[A.CLEAR_AI_MEMORY].fn({});
     self.__requests = [];

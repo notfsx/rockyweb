@@ -113,6 +113,7 @@ try {
   });
   const opt = await context.newPage();
   await opt.goto(`chrome-extension://${extId}/options.html`);
+  await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiEnabled', payload: { enabled: true } }));
   await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiAutoOptimise', payload: { enabled: true } }));
   await opt.evaluate(() => chrome.storage.local.set({ aiMemory: {} }));
   for (const p of context.pages()) if (p.url().startsWith('chrome-extension://')) await p.close();
