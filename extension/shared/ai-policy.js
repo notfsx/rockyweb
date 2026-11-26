@@ -337,7 +337,7 @@
   const COMMERCE_WORDS = /(subscri|abonn|\babo\b|\bpur\b|pay|purchase|buy|price|premium|€|£|\$|kaufen|suscri|abbona|assin|prenumer|tilaa|předplat|előfizet|sign in|sign up|log ?in|register|account|anmeld|connexion|connecter|iniciar sesión|accedi|inloggen|zaloguj|logga in|registr)/i;
   // Postponing, asking for information, help or a language switch: not an answer at all. Real Nano took
   // "Remind me later" and "Tell me more" for refusals, so these never reach it.
-  const NON_ANSWER = /(later|remind|skip|not now|maybe|go back|^back$|next time|another time|tomorrow|not sure|undecided|tell me|read|find out|show me|more about|what |why|how |help|explain|policy|notice|statement|language|sprache|langue|idioma|lingua|taal|język|språk|sprog|kieli|jazyk|nyelv|später|plus tard|más tarde|più tardi|mais tarde|później|senare|senere|myöhemmin|později|később|mehr|savoir|plus d'|más info|ulteriori|meer|lees|leia|więcej|läs|læs|lue|více|több)/i;
+  const NON_ANSWER = /(later|remind|skip|not now|maybe|go back|^back$|next time|another time|tomorrow|not sure|undecided|decid|tell me|read|find out|show me|more about|what |why|how |help|explain|policy|notice|statement|language|sprache|langue|idioma|lingua|taal|język|språk|sprog|kieli|jazyk|nyelv|später|plus tard|más tarde|più tardi|mais tarde|później|senare|senere|myöhemmin|později|később|mehr|savoir|plus d'|más info|ulteriori|meer|lees|leia|więcej|läs|læs|lue|více|több)/i;
   // Attribute names and values on the element that betray an accept button behind refusal-like text.
   const ACCEPT_ATTR = /(accept|agree|allow[-_ ]?all|allowall|opt[-_ ]?in|consent[-_ ]?all|consentall|acceptall)/i;
 
