@@ -242,3 +242,19 @@ test('a kept session asks one tiny question now and then, and stops once the kee
   await sleep(40);
   assert.equal(p.stats.touches, 0, 'nothing kept, nothing asked');
 });
+
+test('a pinned session is never released and keeps touching, even when pinned again every few moments', async () => {
+  const f = fakeLM();
+  const b = RW.createAiBroker({ getLM: () => f.LM, idleRelease: 20, touchEvery: 40 });
+  b.pin(true);
+  assert.equal((await b.warm()).ok, true);
+  // The keep alarm pins again every minute; found on real Nano, where that stopped every touch.
+  const again = setInterval(() => b.pin(true), 10);
+  for (let i = 0; i < 100 && b.stats.touches < 2; i++) await sleep(10);
+  clearInterval(again);
+  assert.equal(b.stats.touches >= 2, true, `touches went on (${b.stats.touches})`);
+  assert.equal(b.hasSession, true, 'never released while pinned');
+  b.pin(false);
+  for (let i = 0; i < 50 && b.hasSession; i++) await sleep(10);
+  assert.equal(b.hasSession, false, 'released after the idle time once unpinned');
+});

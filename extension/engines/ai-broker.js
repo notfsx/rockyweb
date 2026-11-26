@@ -222,6 +222,8 @@
     // Keeps the session, and so the model, loaded until unpinned. The user asked for this by turning
     // on on-device AI with "keep the model loaded"; it costs memory for as long as Chrome runs.
     function pin(on) {
+      // Called every minute by the keep alarm: rescheduling here would push the touch back for ever.
+      if (pinned === !!on) return;
       pinned = !!on;
       if (base) scheduleRelease();
     }
