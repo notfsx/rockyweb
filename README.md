@@ -31,7 +31,7 @@ Everything in Rockyweb works without AI. On-device AI is a separate, experimenta
 - **Start Chrome at sign-in (recommended while on).** An optional `background` permission, requested only from that switch, makes Chrome start in the background when you sign in to your computer and keep running after its last window closes, so the model can be loaded before you open a window. It depends on Chrome's "Continue running background apps when Google Chrome is closed" setting. Turning AI off removes the permission.
 - Light mode pauses all of it. Turning AI off cancels every request and lets the model go.
 
-Not verified yet (this design is provisional): how long the model stays loaded over hours with the 4-minute question, the memory and battery cost of keeping it loaded, and Chrome actually starting at sign-in with the `background` permission on each platform.
+Measured on one Windows laptop with Chrome 158 (see [tests/nano/results.md](tests/nano/results.md)): with nothing open, the model was ready 9 to 13 s after AI was turned on and 16 to 19 s after Chrome started; it stayed loaded through 5, 15 and 30 minutes idle (about 5.2 GB in Chrome's model process) and answered an article overlay in about 2 s after each gap; a stopped service worker came back by itself within seconds; turning AI off let the model go within a minute. Not verified yet (this design is provisional): hours rather than half an hour, battery use, slower computers, and Chrome actually starting at sign-in with the `background` permission on each platform.
 
 ### Automatic optimisation
 
