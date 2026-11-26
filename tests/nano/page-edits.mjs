@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { CHROME } from './cdp-pipe.mjs';
+import { CHROME, EXTRA_ARGS } from './cdp-pipe.mjs';
 
 const [ROOT, PROFILE, OUT, REPS = '2', ONLY = ''] = process.argv.slice(2);
 // RW_EXTS=dirA;dirB runs each build in turn in the same Chrome, so the model is only warmed once.
@@ -149,7 +149,7 @@ const CASES = [
 
 // ---- run
 const chrome = spawn(CHROME, [`--user-data-dir=${PROFILE}`, '--remote-debugging-port=9342', '--no-first-run', '--no-default-browser-check',
-  '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', '--window-size=1280,900', '--host-resolver-rules=MAP *.test 127.0.0.1'],
+  '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', '--window-size=1280,900', '--host-resolver-rules=MAP *.test 127.0.0.1', ...EXTRA_ARGS],
 { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
 let pbuf = ''; let pn = 0; const pw = new Map();
 chrome.stdio[4].on('data', (d) => { pbuf += d; let i; while ((i = pbuf.indexOf('\0')) >= 0) { const m = JSON.parse(pbuf.slice(0, i)); pbuf = pbuf.slice(i + 1); if (pw.has(m.id)) { pw.get(m.id)(m); pw.delete(m.id); } } });

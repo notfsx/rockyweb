@@ -4,10 +4,12 @@ import path from 'node:path';
 
 export const CHROME = process.env.ROCKYWEB_NANO_CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Extra Chrome switches, e.g. NANO_CHROME_ARGS="--headless=new" to run without a window.
+export const EXTRA_ARGS = (process.env.NANO_CHROME_ARGS || '').split(' ').filter(Boolean);
 
 export function launch({ profile, args = [], url = 'about:blank' }) {
   const chrome = spawn(CHROME, [`--user-data-dir=${profile}`, '--remote-debugging-pipe', '--enable-unsafe-extension-debugging',
-    '--no-first-run', '--no-default-browser-check', ...args, url], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
+    '--no-first-run', '--no-default-browser-check', ...EXTRA_ARGS, ...args, url], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
   let buf = '';
   let n = 0;
   const waiting = new Map();
