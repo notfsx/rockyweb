@@ -244,27 +244,98 @@ try {
     assert.ok(n >= 4, `expected URL-strip rules, got ${n}`);
   });
 
-  await check('welcome page: what already works, and the AI offer only where the model can run', async () => {
+  // The general settings first-run setup can change, read back from the background.
+  const general = async () => {
+    const s = (await msg(ACTIONS.GET_OPTIONS_STATE, {})).state;
+    return { tier: s.globalDefaultTier, mode: s.operatingMode, cats: s.globalCustomConfig.consentCategories, ai: s.aiSettings.enabled };
+  };
+  const openSetup = async () => {
+    const w = await context.newPage();
+    await w.goto(`chrome-extension://${extId}/options.html#welcome`);
+    await w.waitForSelector('#setupNext');
+    return w;
+  };
+  const toStep2 = async (w) => {
+    await w.click('#setupNext');
+    await w.waitForSelector('#setupTier [role=radio]');
+  };
+  const checked = (w, sel) => w.evaluate((s) => [...document.querySelectorAll(`${s} [role=radio][aria-checked=true]`)].map((b) => b.textContent), sel);
+
+  await check('first-run setup: opens once; step 1 is a short intro with only next to press; protection already runs', async () => {
     const opened = await poll(() => {
       const n = context.pages().filter((p) => p.url().includes('#welcome')).length;
       return n || null;
     });
     assert.equal(opened, 1, 'one welcome tab opens on a fresh install');
     for (const p of context.pages()) if (p.url().includes('#welcome')) await p.close();
-    const w = await context.newPage();
-    await w.goto(`chrome-extension://${extId}/options.html#welcome`);
-    await w.waitForFunction(() => document.querySelectorAll('#welcomeFacts div').length === 3);
+    const before = await general();
+    assert.equal(before.tier, 'balanced', 'protection runs with the defaults before setup is finished');
+    assert.equal(before.ai, false);
+    const w = await openSetup();
     const v = await w.evaluate(() => ({
-      shown: !document.getElementById('welcome').hidden,
+      intro: !document.getElementById('setupIntro').hidden,
+      general: document.getElementById('setupGeneral').hidden,
       others: document.getElementById('protection').hidden,
-      facts: document.getElementById('welcomeFacts').innerText,
-      hasLM: typeof self.LanguageModel !== 'undefined',
-      ai: document.getElementById('welcomeAi').hidden
+      nav: document.getElementById('nav').checkVisibility(),
+      text: document.getElementById('setupIntro').innerText,
+      buttons: [...document.querySelectorAll('#setupIntro button')].map((b) => b.textContent),
+      controls: document.querySelectorAll('#setupIntro [role=radio], #setupIntro [role=switch], #setupIntro input, #setupIntro select, #setupIntro dl').length
     }));
-    assert.ok(v.shown && v.others);
-    assert.match(v.facts, /cookie popups/);
-    if (!v.hasLM) assert.equal(v.ai, true, 'no on-device AI here, so no offer');
+    assert.ok(v.intro && v.general && v.others);
+    assert.equal(v.nav, false, 'the settings nav is hidden during setup');
+    for (const re of [/cookie popups/, /ads and trackers/, /links/, /toolbar icon/]) assert.match(v.text, re);
+    assert.deepEqual(v.buttons, ['next'], 'nothing on the intro looks adjustable');
+    assert.equal(v.controls, 0);
     await w.close();
+  });
+
+  await check('first-run setup: step 2 starts from today\'s settings; done with nothing changed changes nothing', async () => {
+    const before = await general();
+    const w = await openSetup();
+    await toStep2(w);
+    assert.equal(await w.evaluate(() => document.activeElement.id), 'generalTitle', 'focus moves to step 2');
+    assert.deepEqual(await checked(w, '#setupTier'), ['balanced']);
+    assert.deepEqual(await checked(w, '#setupOperating'), ['full']);
+    assert.deepEqual(await checked(w, '#setupCookies'), ['on', 'off', 'off'], 'functional on, analytics and marketing off');
+    const hasLM = await w.evaluate(() => typeof self.LanguageModel !== 'undefined');
+    if (!hasLM) assert.equal(await w.evaluate(() => document.getElementById('setupAi').hidden), true, 'no on-device AI here, so no offer');
+    await w.click('#setupBack');
+    assert.equal(await w.evaluate(() => !document.getElementById('setupIntro').hidden), true, 'back returns to the intro');
+    await toStep2(w);
+    await w.click('#setupDone');
+    await w.waitForFunction(() => location.hash === '#protection' && !document.getElementById('protection').hidden);
+    assert.equal(await w.evaluate(() => document.getElementById('nav').checkVisibility()), true, 'the settings nav is back');
+    assert.deepEqual(await general(), before);
+    await w.close();
+  });
+
+  await check('first-run setup: closing half way changes nothing; done applies the choices', async () => {
+    const before = await general();
+    let w = await openSetup();
+    await toStep2(w);
+    await w.click('#setupTier [role=radio]:text-is("strict")');
+    await w.click('#setupOperating [role=radio]:text-is("light")');
+    await sleep(300);
+    await w.close();
+    assert.deepEqual(await general(), before, 'nothing is saved until done');
+
+    w = await openSetup();
+    await toStep2(w);
+    await w.click('#setupCookies .setup-cat:has-text("analytics") [role=radio]:text-is("on")');
+    await w.click('#setupTier [role=radio]:text-is("strict")');
+    assert.equal(await w.evaluate(() => document.querySelectorAll('#setupCookies [aria-disabled=true]').length), 3, 'strict rejects everything optional');
+    await w.click('#setupOperating [role=radio]:text-is("light")');
+    await w.click('#setupDone');
+    const after = await poll(async () => { const g = await general(); return g.mode === 'light' ? g : null; });
+    assert.equal(after.tier, 'strict');
+    assert.equal(after.cats.analytics, true);
+    assert.equal(after.cats.marketing, false);
+    assert.equal(after.ai, false, 'AI stays off');
+    await w.close();
+    await msg(ACTIONS.SET_GLOBAL_TIER, { tier: 'balanced' });
+    await msg(ACTIONS.SET_OPERATING_MODE, { mode: 'full' });
+    await msg(ACTIONS.SET_GLOBAL_CUSTOM_OPTION, { key: 'consentCategories', value: before.cats });
+    assert.deepEqual(await general(), before);
   });
 
   const web = await context.newPage();
@@ -621,7 +692,7 @@ try {
   await check('every AI feature carries a quiet "experimental" label; settings and welcome link to the repository', async () => {
     const p = await settingsPage('ai');
     const tags = await p.evaluate(() => [...document.querySelectorAll('.exp-tag')].map((t) => t.closest('h1, h2').textContent.replace('experimental', '').trim()));
-    for (const want of ['on-device AI', 'page fixes', 'on-device AI is off']) assert.ok(tags.includes(want), want);
+    for (const want of ['on-device AI', 'page fixes', 'use Chrome\'s on-device AI']) assert.ok(tags.includes(want), want);
     // The AI features sit on the AI page, under its label.
     const onAiPage = await p.evaluate(() => ['aiMasterToggle', 'aiKeepToggle', 'aiStartToggle', 'aiToggle', 'pageEditsToggle'].every((id) => !!document.querySelector('#ai #' + id)));
     assert.equal(onAiPage, true);

@@ -399,33 +399,69 @@ try {
     await p.close();
   });
 
-  await check('welcome page: mentions on-device AI only where it can run, as a pointer to the AI page, and never downloads', async () => {
-    const welcomeUi = (p) => p.evaluate(() => ({
-      card: !document.getElementById('welcomeAi').hidden,
-      buttons: document.querySelectorAll('#welcomeAi button').length,
-      link: !!document.querySelector('#welcomeAi a[href="#ai"]'),
-      text: document.getElementById('welcomeAi').textContent,
-      created: window.__created || 0
-    }));
-    const open = async (state, extra) => { const p = await optionsWith(state, extra); await p.evaluate(() => { location.hash = 'welcome'; }); await sleep(500); return p; };
+  await check('first-run setup: AI offered only where it can run, off by default, behind the same confirm; opening never downloads', async () => {
+    await msg(ACTIONS.SET_AI_ENABLED, { enabled: false });
+    const setupUi = (p) => p.evaluate(() => {
+      const box = document.getElementById('setupAiConfirm');
+      const go = box.querySelector('button.on');
+      const sw = document.querySelector('#setupAiToggle .switch');
+      return {
+        shown: !document.getElementById('setupAi').hidden,
+        last: [...document.querySelectorAll('#setupGeneral > .setting')].pop() === document.getElementById('setupAi'),
+        checked: sw ? sw.getAttribute('aria-checked') === 'true' : null,
+        text: document.getElementById('setupAi').textContent,
+        confirm: box.hidden ? '' : box.textContent,
+        go: go ? { text: go.textContent, disabled: go.disabled } : null,
+        aiPageConfirm: !document.getElementById('aiMasterSetup').hidden,
+        created: window.__created || 0
+      };
+    });
+    const open = async (state, extra) => {
+      const p = await optionsWith(state, extra);
+      await p.evaluate(() => { location.hash = 'welcome'; });
+      await p.waitForSelector('#setupNext');
+      await sleep(300);
+      await p.click('#setupNext');
+      await sleep(500);
+      return p;
+    };
     for (const st of ['absent', 'unavailable']) {
       const p = await open(st);
-      assert.equal((await welcomeUi(p)).card, false, `no mention when ${st}`);
+      assert.equal((await setupUi(p)).shown, false, `no AI option when ${st}`);
       await p.close();
     }
     const p = await open('downloadable');
-    const ui = await welcomeUi(p);
-    assert.ok(ui.card);
-    assert.match(ui.text, /heavy/);
-    assert.equal(ui.buttons, 0, 'nothing to press on the welcome page');
-    assert.equal(ui.link, true);
-    assert.equal(ui.created, 0, 'opening the welcome page never starts a download');
-    await p.click('#welcomeAi a[href="#ai"]');
-    await p.waitForFunction(() => !document.getElementById('ai').hidden);
-    await msg(ACTIONS.SET_AI_ENABLED, { enabled: true });
-    await p.evaluate(() => { location.hash = 'welcome'; });
-    await poll(async () => !(await welcomeUi(p)).card);
-    assert.equal((await welcomeUi(p)).card, false, 'no mention once AI is on');
+    let ui = await setupUi(p);
+    assert.ok(ui.shown, 'offered where the model can run');
+    assert.equal(ui.last, true, 'at the bottom of the general settings');
+    assert.equal(ui.checked, false, 'off by default');
+    assert.match(ui.text, /experimental/);
+    assert.equal(ui.created, 0, 'opening setup never creates or downloads a model');
+    assert.equal((await aiState()).enabled, false);
+
+    await p.click('#setupAiToggle .switch');
+    ui = await setupUi(p);
+    assert.match(ui.confirm, /memory/);
+    assert.match(ui.confirm, /download/);
+    assert.ok(ui.go && ui.go.disabled, 'the button waits for the tick');
+    assert.equal(ui.go.text, 'download and turn on');
+    assert.equal(ui.aiPageConfirm, false, 'the confirm shows once, here');
+    assert.equal(ui.created, 0, 'the switch alone starts nothing');
+    await p.click('#setupAiConfirm button:text-is("cancel")');
+    ui = await setupUi(p);
+    assert.equal(ui.checked, false);
+    assert.equal((await aiState()).enabled, false, 'cancel leaves AI off');
+
+    await p.click('#setupAiToggle .switch');
+    await p.check('#setupAiConfirm input[type=checkbox]');
+    await p.click('#setupAiConfirm button.on');
+    await poll(async () => (await aiState()).enabled === true);
+    ui = await poll(async () => { const u = await setupUi(p); return u.checked && !u.confirm ? u : null; }, 6000);
+    assert.ok(ui, 'on after the download');
+    assert.equal(ui.created, 1, 'one download, from the click');
+    await p.click('#setupDone');
+    await p.waitForFunction(() => location.hash === '#protection');
+    assert.equal((await aiState()).enabled, true, 'done keeps the AI choice');
     await msg(ACTIONS.SET_AI_ENABLED, { enabled: false });
     await p.close();
   });

@@ -237,10 +237,8 @@
     const kept = keptKeys(spans);
     // "Dark mode" and the like are page looks, not Rockyweb modes.
     const aboutProtection = PROTECTION_WORDS.test(String(request || '').replace(/\b(dark|night|reading|reader)\s+mode\b/gi, ''));
-    if (!aboutProtection && changes.some((c) => c.op === 'site_mode' || c.op === 'setting')) {
-      changes = changes.filter((c) => c.op !== 'site_mode' && c.op !== 'setting');
-      notes.push('a protection change you did not ask for');
-    }
+    // Removed without a note: the user never asked for it, so there is nothing to tell them.
+    if (!aboutProtection) changes = changes.filter((c) => c.op !== 'site_mode' && c.op !== 'setting');
     // "Off ... except / but keep X": the narrowest mode that still does X, or no mode change.
     const narrowing = changes.find((c) => c.op === 'site_mode' && (c.value === 'off' || c.value === 'consent_only'));
     if (spans.length && narrowing) {

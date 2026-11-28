@@ -12,7 +12,12 @@ The loadable extension is the **`extension/`** folder. Everything else is toolin
 
 Chrome 116 or newer. No build step is needed.
 
-A fresh install opens a short welcome page (`options.html#welcome`): what already works without any setup, and, only when Chrome reports that this computer can run its on-device model, a note that on-device AI is off and where to turn it on. Nothing downloads from it. Updates never open it.
+A fresh install opens a two-step setup (`options.html#welcome`). Protection already runs with the defaults before it, and closing the tab half way changes nothing.
+
+1. A short intro to what Rockyweb does, with a next button.
+2. The general settings for every website: default mode, the answer to cookie popups, and how hard Rockyweb works, already set to the defaults, so done with nothing changed keeps them. Choices are saved on done. Only when Chrome reports that this computer can run its on-device model, the on-device AI switch sits at the bottom: off, and turned on through the same explanation and confirm as under settings, AI. Opening setup never downloads the model; only "download and turn on" does.
+
+After done, the settings page opens. Changes for a single website live on the toolbar icon. Updates never open setup.
 
 ## Using it
 
@@ -26,7 +31,7 @@ A fresh install opens a short welcome page (`options.html#welcome`): what alread
 
 Everything in Rockyweb works without AI. On-device AI is a separate, experimental switch under settings, AI, and it is not meant for low-powered computers or for light browsing:
 
-- **Turning it on is deliberate.** The switch opens a short explanation of the cost and a box to tick ("I understand it keeps a lot of memory busy and uses more battery") before "turn on" (or "download and turn on") works. The welcome page only mentions it. "Describe a change" in the popup points to this page until AI is on.
+- **Turning it on is deliberate.** The switch opens a short explanation of the cost and a box to tick ("I understand it keeps a lot of memory busy and uses more battery") before "turn on" (or "download and turn on") works. First-run setup offers the same switch, with the same confirm, at the bottom of its general settings. "Describe a change" in the popup points to this page until AI is on.
 - **Kept loaded (default while on).** From the moment Chrome starts, the service worker loads Gemini Nano and holds one session open, asks it a one-word question every 4 minutes so Chrome does not unload it, and keeps itself running with an extension call every 20 s (Chrome stops an idle worker after 30 s). A one-minute `chrome.alarms` alarm starts all of this again if Chrome stopped the worker anyway. Google's own guidance is to keep one empty session alive so the model stays ready. Switch "keep the model loaded" off to go back to loading on first use and letting go 10 minutes later.
 - **Start Chrome at sign-in (recommended while on).** An optional `background` permission, requested only from that switch, makes Chrome start in the background when you sign in to your computer and keep running after its last window closes, so the model can be loaded before you open a window. It depends on Chrome's "Continue running background apps when Google Chrome is closed" setting. Turning AI off removes the permission.
 - Light mode pauses all of it. Turning AI off cancels every request and lets the model go.

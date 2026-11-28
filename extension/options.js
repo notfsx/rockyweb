@@ -70,9 +70,13 @@
 
   // ---------------------------------------------------------------- routing
 
+  let shown = '';
   function showPage() {
     const id = PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'protection';
+    if (id === 'welcome' && shown !== 'welcome') Object.assign(wiz, { step: 1, tier: null, cats: null, mode: null });
+    shown = id;
     for (const p of PAGES) $(p).hidden = p !== id;
+    $('nav').hidden = id === 'welcome';
     for (const a of document.querySelectorAll('#nav a')) {
       if (a.getAttribute('href') === `#${id}`) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
@@ -167,23 +171,40 @@
     return { disabled: false, text: S.aiSettings.keepLoaded !== false ? 'On. The model is kept loaded while Chrome runs.' : 'On. The model loads when you first use it.' };
   }
 
+  // The master switch shows on the AI page and at the bottom of first-run setup. Both run the same
+  // confirm step; only the one on screen (active) shows it.
+  const MASTER_AI = { desc: 'aiMasterDescription', toggle: 'aiMasterToggle', status: 'aiMasterStatus', setup: 'aiMasterSetup', label: 'Use Chrome’s on-device AI' };
+  const SETUP_AI = { desc: 'setupAiDescription', toggle: 'setupAiToggle', status: 'setupAiStatus', setup: 'setupAiConfirm', label: 'Turn on Chrome’s on-device AI' };
+
   function renderAi() {
     if (!S) return;
     const on = !!S.aiSettings.enabled;
-    $('aiMasterDescription').replaceChildren(infoText(
+    renderMaster(MASTER_AI, !setupShown());
+    $('aiFeatures').hidden = !on;
+    if (on) renderAiFeatures();
+    renderWelcome();
+  }
+
+  function renderMaster(ids, active) {
+    const on = !!S.aiSettings.enabled;
+    $(ids.desc).replaceChildren(infoText(
       'Lets you describe page changes in the toolbar, and lets Rockyweb adjust sites by itself if you want, using Gemini Nano, the model Chrome runs on this computer.',
       'It is experimental and heavy. Answers take seconds and can be wrong, so every change previews first and can be undone. While it is on, Rockyweb keeps the model loaded so answers come quickly; that keeps several gigabytes of memory (or graphics memory) busy and uses more battery. It suits a desktop, or a laptop on mains power, not a low-powered computer. Chrome’s stated minimum is a graphics card with more than 4 GB of memory, or 16 GB of memory and 4 processor cores, and 22 GB of free disk space for the download. Nothing is sent to any server.',
       'on-device AI'));
     const st = masterState();
-    const sw = toggle(on || ai.setup === 'confirm', onMasterToggle, 'Use Chrome’s on-device AI', st.disabled);
-    sw.setAttribute('aria-describedby', 'aiMasterStatus');
-    $('aiMasterToggle').replaceChildren(sw);
-    const status = $('aiMasterStatus');
+    const sw = toggle(on || (active && ai.setup === 'confirm'), onMasterToggle, ids.label, st.disabled);
+    sw.setAttribute('aria-describedby', ids.status);
+    $(ids.toggle).replaceChildren(sw);
+    const status = $(ids.status);
     status.textContent = ai.error || st.text;
     status.classList.toggle('warn', !!(ai.error || st.warn));
 
-    const setup = $('aiMasterSetup');
+    const setup = $(ids.setup);
     setup.replaceChildren();
+    if (!active) {
+      setup.hidden = true;
+      return;
+    }
     if (ai.setup === 'confirm') {
       const needsDownload = ai.availability === 'downloadable';
       const go = h('button', { class: 'btn on', type: 'button', disabled: !ai.understood, text: needsDownload ? 'download and turn on' : 'turn on', onclick: confirmTurnOn });
@@ -201,9 +222,6 @@
         h('button', { class: 'btn', type: 'button', text: 'cancel download', onclick: () => ai.ctrl && ai.ctrl.abort() }));
     }
     setup.hidden = !setup.childNodes.length;
-    $('aiFeatures').hidden = !on;
-    if (on) renderAiFeatures();
-    renderWelcome();
   }
 
   function renderAiFeatures() {
@@ -263,19 +281,80 @@
     renderAi();
   }
 
-  // ---- first run (#welcome, opened once after install): what already works. AI is only mentioned,
-  // and only on a computer that can run it.
+  // ---- first-run setup (#welcome, opened once after install). Protection already runs with the
+  // defaults; step 2 starts from the saved settings and writes only what changed, on done. Leaving
+  // early changes nothing. AI shows only where the model can run, off, behind the same confirm.
+
+  const wiz = { step: 1, tier: null, cats: null, mode: null };
+  const CATS = [['functional', 'functional'], ['analytics', 'analytics'], ['marketing', 'marketing']];
+  const setupShown = () => !$('welcome').hidden && wiz.step === 2;
 
   function renderWelcome() {
-    if (!S || $('welcome').hidden) return;
-    const cfg = RW.getEffectiveConfig(S, null);
-    const fact = (label, value) => h('div', {}, h('dt', { text: label }), h('dd', { text: value }));
-    $('welcomeFacts').replaceChildren(
-      fact('cookie popups', CONSENT_TEXT[cfg.consentMode]),
-      fact('known ads & trackers', cfg.adBlockNetwork ? 'blocked' : 'allowed'),
-      fact('tracking links', cfg.stripUrlParams ? 'cleaned' : 'untouched'));
+    $('setupIntro').hidden = wiz.step !== 1;
+    $('setupGeneral').hidden = wiz.step !== 2;
+    if (!S || !setupShown()) return;
+    if (wiz.tier === null) {
+      wiz.tier = S.globalDefaultTier;
+      wiz.cats = Object.assign({}, S.globalCustomConfig.consentCategories);
+      wiz.mode = S.operatingMode;
+    }
+    const redraw = () => keepFocus(renderWelcome);
+    const tiers = ['consent_only', 'balanced', 'strict'];
+    if (!tiers.includes(wiz.tier)) tiers.push(wiz.tier);
+    $('setupTier').replaceChildren(seg(
+      tiers.map((t) => ({ value: t, label: MODE_LABEL[t], title: RW.TIER_META[t].name })),
+      wiz.tier, (t) => { wiz.tier = t; redraw(); }, 'Default mode for every website', false, 'btns'));
+    $('setupTierText').textContent = RW.TIER_META[wiz.tier].description;
+
+    const consent = (wiz.tier === 'custom' ? S.globalCustomConfig : RW.TIER_PRESETS[wiz.tier]).consentMode;
+    const fixed = consent !== 'custom_categories';
+    $('setupCookieText').textContent = consent === 'strict_reject' ? 'This mode rejects everything optional.'
+      : consent === 'off' ? 'This mode leaves cookie popups alone.'
+        : 'What Rockyweb says yes to. Cookies a site needs to work are always allowed.';
+    $('setupCookies').replaceChildren(...CATS.map(([key, label]) => h('div', { class: 'setup-cat' },
+      h('span', { text: label }),
+      onOff(wiz.cats[key], (v) => { wiz.cats[key] = v; redraw(); }, `Answer for ${label} cookies`, fixed))));
+
+    $('setupOperating').replaceChildren(seg(
+      ['full', 'light'].map((m) => ({ value: m, label: m, title: RW.OPERATING_META[m].description })),
+      wiz.mode, (m) => { wiz.mode = m; redraw(); }, 'How hard Rockyweb works on every website', false, 'btns'));
+    $('setupOperatingText').textContent = OPERATING_TEXT[wiz.mode][0];
+
     const a = ai.availability;
-    $('welcomeAi').hidden = a === null || unusable(a) || !!S.aiSettings.enabled;
+    $('setupAi').hidden = a === null || unusable(a);
+    if (!$('setupAi').hidden) renderMaster(SETUP_AI, true);
+  }
+
+  function setupStep(n) {
+    wiz.step = n;
+    if (n === 1) { ai.setup = ai.setup === 'confirm' ? 'idle' : ai.setup; ai.understood = false; }
+    window.scrollTo(0, 0);
+    renderAi();
+    renderWelcome();
+    $(n === 1 ? 'introTitle' : 'generalTitle').focus();
+  }
+
+  // Writes only the choices that differ from what is saved, so done with nothing changed sends nothing.
+  async function finishSetup() {
+    if (!S || wiz.tier === null) { location.hash = 'protection'; return; }
+    const steps = [];
+    if (wiz.tier !== S.globalDefaultTier) steps.push([A.SET_GLOBAL_TIER, { tier: wiz.tier }]);
+    const cats = S.globalCustomConfig.consentCategories;
+    if (CATS.some(([k]) => !!cats[k] !== !!wiz.cats[k])) {
+      steps.push([A.SET_GLOBAL_CUSTOM_OPTION, { key: 'consentCategories', value: Object.assign({}, cats, wiz.cats) }]);
+    }
+    if (wiz.mode !== S.operatingMode) steps.push([A.SET_OPERATING_MODE, { mode: wiz.mode }]);
+    try {
+      for (const [action, payload] of steps) await send(action, payload);
+    } catch (err) {
+      toast(errorText(err), true);
+      await load();
+      return;
+    }
+    if (ai.setup === 'confirm') { ai.setup = 'idle'; ai.understood = false; }
+    location.hash = 'protection';
+    toast('All set. Change a single website from the toolbar icon.');
+    await load();
   }
 
   // Runs from the user's click, which Chrome requires before it downloads the model.
@@ -596,6 +675,9 @@
 
   window.addEventListener('hashchange', showPage);
   showPage();
+  $('setupNext').addEventListener('click', () => setupStep(2));
+  $('setupBack').addEventListener('click', () => setupStep(1));
+  $('setupDone').addEventListener('click', finishSetup);
 
   $('addSiteTier').append(...RW.TIER_ORDER.map((t) => h('option', { value: t, selected: t === 'consent_only', text: MODE_LABEL[t] })));
   $('siteSearch').addEventListener('input', (e) => { ui.siteQuery = e.target.value; renderWebsites(); });
