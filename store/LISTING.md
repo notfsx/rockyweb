@@ -8,7 +8,7 @@ Everything needed to publish Rockyweb. Text here is ready to paste into the deve
 npm run package
 ```
 
-Upload `dist/rockyweb-1.1.0.zip`. The script runs the verification checks first and leaves out Chrome's `_metadata` cache.
+Upload `dist/rockyweb-1.1.1.zip`. The script runs the verification checks first and leaves out Chrome's `_metadata` cache.
 
 ## 2. Store listing
 
@@ -108,8 +108,8 @@ No login needed. A setup tab opens once after install: a short intro, then the g
 
 ## 6. Before you submit
 
-- [x] `npm run check`, `npm run test:e2e`, `npm run test:a11y` and `npm run test:upgrade` pass (2026-11-21, for 1.1.0)
+- [x] `npm run check`, `npm run test:e2e`, `npm run test:a11y` and `npm run test:upgrade` pass (2026-11-28, for 1.1.1)
 - [x] `npm run test:nano` passes on a machine with Chrome's on-device AI (real model, all Rockyweb pages closed; 2026-11-20, see `tests/nano/results.md`)
-- [ ] Version in `extension/manifest.json` bumped for every new upload
+- [x] Version in `extension/manifest.json` bumped for every new upload (1.1.1)
 - [ ] Repository public, so the privacy policy URL opens
 - [ ] Developer account has a verified contact email
