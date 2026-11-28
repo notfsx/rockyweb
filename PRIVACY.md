@@ -1,6 +1,6 @@
 # Rockyweb privacy policy
 
-Effective 20 November 2026.
+Effective 28 November 2026.
 
 Rockyweb is a browser extension that answers cookie popups, blocks ads and trackers, and hides page elements you choose. It is built so that nothing about you or your browsing leaves your device. The one exception is optional and off by default: if you turn on Chrome sync in Rockyweb, your settings and page changes are copied to your other computers through your own Google account (see below).
 
