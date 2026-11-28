@@ -556,7 +556,7 @@
         }
       }
       if (!plan) describe.error = 'Rockyweb could not turn that into a change. Try rephrasing it.';
-      else if (!plan.changes.length && !ops.length && !plan.unsupported.length && !notes.length) describe.error = 'That does not seem to ask for any change.';
+      else if (!plan.changes.length && !ops.length && !plan.unsupported.length && !notes.length) describe.error = 'Rockyweb could not find a change it can make for that. Nothing was changed; try rewording it.';
       else {
         Object.assign(describe, { plan, preview: RW.describePlan(plan, cfg), ops, notes });
         if (ops.length) showOnPage(ops);

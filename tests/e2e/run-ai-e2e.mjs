@@ -1022,6 +1022,32 @@ try {
     assert.equal((await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.siteProfiles['describe.test'], undefined);
     await pop.close();
 
+    // Only an unasked protection change: removed without a note, and the popup says nothing was found.
+    const unasked = await context.newPage();
+    await unasked.addInitScript(() => {
+      Object.defineProperty(window, 'LanguageModel', {
+        configurable: true,
+        writable: true,
+        value: {
+          async availability() { return 'available'; },
+          async create() { return { async prompt() { return JSON.stringify({ changes: [{ op: 'site_mode', value: 'off' }], unsupported: [], edits: [] }); }, destroy() {} }; }
+        }
+      });
+    });
+    await unasked.setViewportSize({ width: 340, height: 700 });
+    await unasked.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}&view=advanced`);
+    await sleep(600);
+    await unasked.click('text=describe a change');
+    await unasked.fill('.describe-input', 'hide the bar asking me to download the app');
+    await unasked.click('text=preview');
+    await unasked.waitForSelector('.describe .note.warn');
+    const said = await unasked.textContent('.describe');
+    assert.match(said, /could not find a change it can make for that\. Nothing was changed/);
+    assert.doesNotMatch(said, /Not supported|did not ask for/);
+    assert.equal(await unasked.locator('.plan').count(), 0, 'no empty preview');
+    assert.equal((await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.siteProfiles['describe.test'], undefined, 'nothing applied');
+    await unasked.close();
+
     const none = await context.newPage();
     await none.addInitScript(() => Object.defineProperty(window, 'LanguageModel', { configurable: true, writable: true, value: undefined }));
     await none.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}&view=advanced`);
