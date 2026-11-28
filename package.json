@@ -1,6 +1,6 @@
 {
   "name": "rockyweb",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Rockyweb: a Manifest V3 extension that answers cookie banners, blocks ads and trackers, and makes reversible page changes with on-device AI.",
   "license": "MIT",

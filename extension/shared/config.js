@@ -285,11 +285,16 @@
     };
   }
 
+  // enabled: the user turned on on-device AI (off by default; nothing uses the model without it).
+  // keepLoaded: while enabled, the model is loaded when Chrome starts and kept loaded.
   // autoOptimise: the AI may act by itself. pageEdits: "describe a change" may edit pages, not only
   // settings. pageFixes: proactive page fixes are off, suggested in the popup, or applied by themselves.
   function sanitizeAiSettings(raw) {
     const src = isObj(raw) ? raw : {};
     return {
+      // Saved before the switch existed: automatic optimisation on means the user already chose AI.
+      enabled: typeof src.enabled === 'boolean' ? src.enabled : src.autoOptimise === true,
+      keepLoaded: src.keepLoaded !== false,
       autoOptimise: src.autoOptimise === true,
       pageEdits: src.pageEdits !== false,
       pageFixes: PAGE_FIX_MODES.includes(src.pageFixes) ? src.pageFixes : 'suggest'
@@ -345,7 +350,8 @@
       cookieBannerAi: profile && profile.cookieBannerAi ? profile.cookieBannerAi : 'auto',
       pageFixesSite: profile && profile.pageFixes ? profile.pageFixes : 'auto',
       operatingMode: s.operatingMode || 'full',
-      aiPreference: !!(s.aiSettings && s.aiSettings.autoOptimise),
+      aiEnabled: !!(s.aiSettings && s.aiSettings.enabled),
+      aiPreference: !!(s.aiSettings && s.aiSettings.enabled && s.aiSettings.autoOptimise),
       aiPageEdits: !(s.aiSettings && s.aiSettings.pageEdits === false),
       pageFixMode: (s.aiSettings && PAGE_FIX_MODES.includes(s.aiSettings.pageFixes)) ? s.aiSettings.pageFixes : 'suggest'
     });
@@ -608,9 +614,14 @@
     return Object.assign({}, state, { aiSettings: Object.assign(sanitizeAiSettings(state.aiSettings), { autoOptimise: enabled === true }) });
   }
 
+  function setAiEnabled(state, enabled) {
+    return Object.assign({}, state, { aiSettings: Object.assign(sanitizeAiSettings(state.aiSettings), { enabled: enabled === true }) });
+  }
+
   function setAiPageSettings(state, patch) {
     const next = sanitizeAiSettings(state.aiSettings);
     if (patch && typeof patch.pageEdits === 'boolean') next.pageEdits = patch.pageEdits;
+    if (patch && typeof patch.keepLoaded === 'boolean') next.keepLoaded = patch.keepLoaded;
     if (patch && patch.pageFixes !== undefined) {
       if (!PAGE_FIX_MODES.includes(patch.pageFixes)) throw new Error('invalid_value');
       next.pageFixes = patch.pageFixes;
@@ -804,6 +815,7 @@
     restoreSiteProfile,
     setOperatingMode,
     setAiAutoOptimise,
+    setAiEnabled,
     setAiPageSettings,
     setSitePageFixes,
     markSitePrivate,

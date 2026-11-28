@@ -128,6 +128,11 @@ try {
     lastMb = mb;
     lastSw = sw;
   }, 15000);
+  // On-device AI is off until turned on; keep loaded stays at its default (on).
+  const optPg = await c.newPage(`chrome-extension://${id}/options.html`);
+  await sleep(800);
+  await c.evaluate(optPg.sessionId, "chrome.runtime.sendMessage({ action: 'setAiEnabled', payload: { enabled: true } })");
+  await c.send('Target.closeTarget', { targetId: optPg.targetId }).catch(() => {});
   const site = await c.newPage('about:blank');
   await c.goto(site, SITE);
   log(`site open, waiting ${IDLE_BEFORE / 1000}s as a user would before opening the popup`);

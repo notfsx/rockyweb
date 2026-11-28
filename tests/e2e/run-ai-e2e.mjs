@@ -259,7 +259,7 @@ try {
 
   console.log(`extension ${extId}, fixtures on :${PORT}`);
 
-  // ---- settings: availability states
+  // ---- settings: the on-device AI page (off by default, turned on on purpose)
 
   async function optionsWith(state, extraInit) {
     const p = await context.newPage();
@@ -292,140 +292,247 @@ try {
         }
       });
     }, [state, extraInit || null]);
-    await p.goto(`chrome-extension://${extId}/options.html#protection`);
+    await p.goto(`chrome-extension://${extId}/options.html#ai`);
     await sleep(700);
     return p;
   }
-  const aiUi = (p) => p.evaluate(() => ({
-    disabled: document.querySelector('#aiToggle .switch').disabled,
-    checked: document.querySelector('#aiToggle .switch').getAttribute('aria-checked') === 'true',
-    status: document.getElementById('aiStatus').textContent,
-    setup: document.getElementById('aiSetup').hidden ? '' : document.getElementById('aiSetup').textContent,
-    created: window.__created || 0
-  }));
+  const aiUi = (p) => p.evaluate(() => {
+    const setup = document.getElementById('aiMasterSetup');
+    const go = setup.querySelector('button.on');
+    return {
+      disabled: document.querySelector('#aiMasterToggle .switch').disabled,
+      checked: document.querySelector('#aiMasterToggle .switch').getAttribute('aria-checked') === 'true',
+      status: document.getElementById('aiMasterStatus').textContent,
+      setup: setup.hidden ? '' : setup.textContent,
+      go: go ? { text: go.textContent, disabled: go.disabled } : null,
+      features: !document.getElementById('aiFeatures').hidden,
+      created: window.__created || 0
+    };
+  });
+  const aiState = async () => (await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.aiSettings;
+  const keepAlarm = async () => (await getSw()).evaluate(() => chrome.alarms.get('rw-ai-keep').then((a) => !!a));
+  // Ticks "I understand" and presses the button it unlocks.
+  const confirmOn = async (p) => {
+    await p.click('#aiMasterToggle .switch');
+    let ui = await aiUi(p);
+    assert.ok(ui.go && ui.go.disabled, 'the button waits for the tick');
+    await p.check('#aiMasterSetup input[type=checkbox]');
+    ui = await aiUi(p);
+    assert.equal(ui.go.disabled, false);
+    await p.click('#aiMasterSetup button.on');
+  };
 
-  await check('settings: absent LanguageModel greys out the AI toggle with an explanation', async () => {
+  await check('settings: on-device AI is off by default; an absent LanguageModel greys out the switch with an explanation', async () => {
+    assert.equal((await aiState()).enabled, false, 'off on a fresh install');
     const p = await optionsWith('absent');
     const ui = await aiUi(p);
     assert.equal(ui.disabled, true);
-    assert.match(ui.status, /unavailable in this browser or on this device/);
+    assert.equal(ui.features, false);
+    assert.match(ui.status, /unavailable in this browser or on this computer/);
     await p.close();
   });
 
-  await check('settings: an unavailable device greys out the toggle', async () => {
+  await check('settings: an unavailable device greys out the switch', async () => {
     const p = await optionsWith('unavailable');
     const ui = await aiUi(p);
     assert.equal(ui.disabled, true);
-    assert.match(ui.status, /unavailable in this browser or on this device/);
+    assert.match(ui.status, /unavailable in this browser or on this computer/);
     assert.equal(ui.created, 0);
     await p.close();
   });
 
-  await check('settings: a downloadable model explains the download and never starts it on open', async () => {
+  await check('settings: turning AI on asks first, explains the cost and the download, and starts nothing on open or cancel', async () => {
     const p = await optionsWith('downloadable');
     let ui = await aiUi(p);
     assert.equal(ui.disabled, false);
-    assert.match(ui.status, /needs to download its on-device model/);
+    assert.equal(ui.status, 'Off.');
     assert.equal(ui.created, 0, 'opening settings must not create a session');
-    await p.click('#aiToggle .switch');
+    await p.click('#aiMasterToggle .switch');
     ui = await aiUi(p);
-    assert.match(ui.setup, /large download/);
-    assert.equal(ui.created, 0, 'turning on only shows the explanation');
+    assert.match(ui.setup, /keeps it loaded until Chrome quits/);
+    assert.match(ui.setup, /downloads the model once/);
+    assert.match(ui.setup, /I understand it keeps a lot of memory busy/);
+    assert.deepEqual(ui.go, { text: 'download and turn on', disabled: true });
+    assert.equal(ui.created, 0, 'switching on only shows the explanation');
+    await p.click('#aiMasterSetup >> text=cancel');
+    ui = await aiUi(p);
+    assert.equal(ui.setup, '');
+    assert.equal(ui.checked, false);
+    assert.equal((await aiState()).enabled, false, 'cancel leaves AI off');
     await p.close();
   });
 
   await check('settings: download in progress shows status, blocks duplicate setup, then turns on', async () => {
     const p = await optionsWith('downloadable');
-    await p.click('#aiToggle .switch');
-    await p.click('text=download and turn on');
+    await confirmOn(p);
     await sleep(400);
     let ui = await aiUi(p);
     assert.equal(ui.disabled, true);
-    assert.match(ui.status, /downloading the on-device model/);
-    assert.ok(!/download and turn on/.test(ui.setup), 'no second download button while downloading');
+    assert.match(ui.status, /downloading the model/);
+    assert.equal(ui.go, null, 'no second download button while downloading');
     const other = await optionsWith('downloading');
     const ui2 = await aiUi(other);
     assert.equal(ui2.disabled, true);
     assert.match(ui2.status, /downloading/);
     await other.close();
-    ui = await poll(async () => { const u = await aiUi(p); return /On\./.test(u.status) ? u : null; }, 6000);
+    ui = await poll(async () => { const u = await aiUi(p); return /^On\./.test(u.status) ? u : null; }, 6000);
     assert.ok(ui, 'ready after the download');
     assert.equal(ui.created, 1);
+    assert.equal(ui.features, true, 'the AI features appear once it is on');
     assert.equal(await p.evaluate(() => window.__destroyed === true), true, 'setup session released');
-    const st = await msg(ACTIONS.GET_OPTIONS_STATE, {});
-    assert.equal(st.state.aiSettings.autoOptimise, true);
+    const st = await aiState();
+    assert.equal(st.enabled, true);
+    assert.equal(st.autoOptimise, false, 'automatic optimisation is a separate choice');
     await p.close();
   });
 
   await check('settings: cancelling the download leaves AI off', async () => {
-    await msg(ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: false });
+    await msg(ACTIONS.SET_AI_ENABLED, { enabled: false });
     const p = await optionsWith('downloadable', 'hang');
-    await p.click('#aiToggle .switch');
-    await p.click('text=download and turn on');
+    await confirmOn(p);
     await sleep(500);
     await p.click('text=cancel download');
     const ui = await poll(async () => { const u = await aiUi(p); return /cancelled/.test(u.status) ? u : null; }, 4000);
     assert.ok(ui);
-    assert.equal((await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.aiSettings.autoOptimise, false);
+    assert.equal(ui.features, false);
+    assert.equal((await aiState()).enabled, false);
     await p.close();
   });
 
-  await check('welcome page: offers the on-device AI only where it can run, and downloads only on a click', async () => {
-    const welcomeUi = (p) => p.evaluate(() => ({
-      card: !document.getElementById('welcomeAi').hidden,
-      status: document.getElementById('welcomeAiStatus').textContent,
-      buttons: [...document.querySelectorAll('#welcomeAiActions button')].map((b) => b.textContent),
-      created: window.__created || 0
-    }));
-    const open = async (state, extra) => { const p = await optionsWith(state, extra); await p.evaluate(() => { location.hash = 'welcome'; }); await sleep(500); return p; };
+  await check('first-run setup: AI offered only where it can run, off by default, behind the same confirm; opening never downloads', async () => {
+    await msg(ACTIONS.SET_AI_ENABLED, { enabled: false });
+    const setupUi = (p) => p.evaluate(() => {
+      const box = document.getElementById('setupAiConfirm');
+      const go = box.querySelector('button.on');
+      const sw = document.querySelector('#setupAiToggle .switch');
+      return {
+        shown: !document.getElementById('setupAi').hidden,
+        last: [...document.querySelectorAll('#setupGeneral > .setting')].pop() === document.getElementById('setupAi'),
+        checked: sw ? sw.getAttribute('aria-checked') === 'true' : null,
+        text: document.getElementById('setupAi').textContent,
+        confirm: box.hidden ? '' : box.textContent,
+        go: go ? { text: go.textContent, disabled: go.disabled } : null,
+        aiPageConfirm: !document.getElementById('aiMasterSetup').hidden,
+        created: window.__created || 0
+      };
+    });
+    const open = async (state, extra) => {
+      const p = await optionsWith(state, extra);
+      await p.evaluate(() => { location.hash = 'welcome'; });
+      await p.waitForSelector('#setupNext');
+      await sleep(300);
+      await p.click('#setupNext');
+      await sleep(500);
+      return p;
+    };
     for (const st of ['absent', 'unavailable']) {
       const p = await open(st);
-      assert.equal((await welcomeUi(p)).card, false, `no offer when ${st}`);
+      assert.equal((await setupUi(p)).shown, false, `no AI option when ${st}`);
       await p.close();
     }
-    let p = await open('downloadable');
-    let ui = await welcomeUi(p);
-    assert.ok(ui.card);
-    assert.match(ui.status, /downloads the model once/);
-    assert.deepEqual(ui.buttons, ['download and turn on', 'not now']);
-    assert.equal(ui.created, 0, 'opening the welcome page never starts a download');
-    await p.click('#welcomeAiActions >> text=not now');
-    ui = await welcomeUi(p);
-    assert.match(ui.status, /any time/);
-    assert.equal(ui.created, 0);
-    assert.equal((await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.aiSettings.autoOptimise, false, 'not now leaves AI off');
-    await p.close();
-    p = await open('downloadable');
-    await p.click('#welcomeAiActions >> text=download and turn on');
-    ui = await poll(async () => { const u = await welcomeUi(p); return /^On\./.test(u.status) ? u : null; }, 6000);
-    assert.ok(ui, 'ready after the download');
-    assert.equal(ui.created, 1);
-    assert.equal((await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.aiSettings.autoOptimise, true);
-    await msg(ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: false });
+    const p = await open('downloadable');
+    let ui = await setupUi(p);
+    assert.ok(ui.shown, 'offered where the model can run');
+    assert.equal(ui.last, true, 'at the bottom of the general settings');
+    assert.equal(ui.checked, false, 'off by default');
+    assert.match(ui.text, /experimental/);
+    assert.equal(ui.created, 0, 'opening setup never creates or downloads a model');
+    assert.equal((await aiState()).enabled, false);
+
+    await p.click('#setupAiToggle .switch');
+    ui = await setupUi(p);
+    assert.match(ui.confirm, /memory/);
+    assert.match(ui.confirm, /download/);
+    assert.ok(ui.go && ui.go.disabled, 'the button waits for the tick');
+    assert.equal(ui.go.text, 'download and turn on');
+    assert.equal(ui.aiPageConfirm, false, 'the confirm shows once, here');
+    assert.equal(ui.created, 0, 'the switch alone starts nothing');
+    await p.click('#setupAiConfirm button:text-is("cancel")');
+    ui = await setupUi(p);
+    assert.equal(ui.checked, false);
+    assert.equal((await aiState()).enabled, false, 'cancel leaves AI off');
+
+    await p.click('#setupAiToggle .switch');
+    await p.check('#setupAiConfirm input[type=checkbox]');
+    await p.click('#setupAiConfirm button.on');
+    await poll(async () => (await aiState()).enabled === true);
+    ui = await poll(async () => { const u = await setupUi(p); return u.checked && !u.confirm ? u : null; }, 6000);
+    assert.ok(ui, 'on after the download');
+    assert.equal(ui.created, 1, 'one download, from the click');
+    await p.click('#setupDone');
+    await p.waitForFunction(() => location.hash === '#protection');
+    assert.equal((await aiState()).enabled, true, 'done keeps the AI choice');
+    await msg(ACTIONS.SET_AI_ENABLED, { enabled: false });
     await p.close();
   });
 
-  await check('settings: a ready model enables the toggle; Light mode pauses it and keeps the choice', async () => {
+  await check('settings: a ready model turns on after the confirm and keeps the model loaded; off clears it', async () => {
     const p = await optionsWith('available');
     let ui = await aiUi(p);
     assert.equal(ui.disabled, false);
-    await p.click('#aiToggle .switch');
-    await poll(async () => (await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.aiSettings.autoOptimise === true);
+    await confirmOn(p);
+    await poll(async () => (await aiState()).enabled === true);
+    ui = await poll(async () => { const u = await aiUi(p); return u.features ? u : null; });
+    assert.ok(ui, 'the AI features appear');
     assert.equal(ui.created, 0, 'a ready model needs no setup session');
-    await msg(ACTIONS.SET_OPERATING_MODE, { mode: 'light' });
-    await p.reload();
-    await sleep(700);
-    ui = await aiUi(p);
-    assert.equal(ui.disabled, true);
-    assert.equal(ui.checked, true, 'saved preference still shown');
-    assert.match(ui.status, /AI is paused in Light mode/);
-    await msg(ACTIONS.SET_OPERATING_MODE, { mode: 'full' });
-    assert.equal((await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.aiSettings.autoOptimise, true);
+    assert.match(ui.status, /kept loaded/);
+    assert.equal(await p.locator('#aiKeepToggle .switch').getAttribute('aria-checked'), 'true', 'keep loaded is on by default');
+    assert.equal(await poll(keepAlarm), true, 'the keep-loaded alarm is set');
+    const status = await msg(ACTIONS.GET_AI_STATUS, {});
+    assert.equal(status.enabled, true);
+    assert.equal(await (await getSw()).evaluate(() => broker.pinned), true, 'the worker keeps the model');
+    await p.click('#aiKeepToggle .switch');
+    await poll(async () => (await aiState()).keepLoaded === false);
+    assert.equal(await poll(async () => !(await keepAlarm())), true, 'no alarm without keep loaded');
+    assert.equal(await (await getSw()).evaluate(() => broker.pinned), false);
+    await p.click('#aiKeepToggle .switch');
+    await poll(async () => (await aiState()).keepLoaded === true);
+    assert.equal(await poll(keepAlarm), true);
+    await p.click('#aiMasterToggle .switch');
+    await poll(async () => (await aiState()).enabled === false);
+    ui = await poll(async () => { const u = await aiUi(p); return u.features ? null : u; });
+    assert.ok(ui, 'the features hide again');
+    assert.equal(await poll(async () => !(await keepAlarm())), true, 'turning AI off clears the alarm');
+    assert.equal(await (await getSw()).evaluate(() => broker.pinned), false);
     await p.close();
   });
 
-  // ---- automatic optimisation with the model double in the service worker
+  await check('settings: automatic optimisation needs AI on; Light mode greys out every AI control and keeps the choices', async () => {
+    await msg(ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: true });
+    assert.equal(await (await getSw()).evaluate(() => RW.getEffectiveConfig(state, null).aiPreference), false, 'no automatic optimisation while AI is off');
+    await msg(ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: false });
+    await msg(ACTIONS.SET_AI_ENABLED, { enabled: true });
+    const p = await optionsWith('available');
+    await p.waitForFunction(() => !document.getElementById('aiFeatures').hidden);
+    await p.click('#aiToggle .switch');
+    await poll(async () => (await aiState()).autoOptimise === true);
+    await msg(ACTIONS.SET_OPERATING_MODE, { mode: 'light' });
+    await p.reload();
+    await sleep(700);
+    const controls = () => p.evaluate(() => ({
+      switches: ['aiMasterToggle', 'aiKeepToggle', 'aiStartToggle', 'aiToggle', 'pageEditsToggle'].map((id) => document.querySelector(`#${id} .switch`).disabled),
+      fixes: document.querySelector('#pageFixesButtons [role=radiogroup]').getAttribute('aria-disabled') === 'true'
+    }));
+    const ui = await aiUi(p);
+    assert.equal(ui.checked, true, 'saved choice still shown');
+    assert.equal(ui.status, 'Paused in Light mode.');
+    assert.equal(await p.locator('#aiToggle .switch').getAttribute('aria-checked'), 'true');
+    assert.deepEqual(await controls(), { switches: [true, true, true, true, true], fixes: true }, 'every AI control and page fixes greyed out');
+    await p.click('#aiToggle .switch', { force: true });
+    await sleep(300);
+    assert.equal((await aiState()).autoOptimise, true, 'a greyed switch changes nothing');
+    await msg(ACTIONS.SET_OPERATING_MODE, { mode: 'full' });
+    await poll(async () => !(await controls()).switches.some(Boolean));
+    assert.deepEqual(await controls(), { switches: [false, false, false, false, false], fixes: false }, 'back in Full mode');
+    assert.equal((await aiState()).autoOptimise, true);
+    await p.close();
+  });
 
+  // ---- automatic optimisation with the model double in the service worker.
+  // Keep loaded is off from here so the worker's own idle timing is what these checks see.
+
+  await msg(ACTIONS.SET_AI_PAGE_SETTINGS, { keepLoaded: false });
+  await msg(ACTIONS.SET_AI_ENABLED, { enabled: true });
   await msg(ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: true });
 
   await check('article overlay: hidden automatically, one model call, listed in the toolbar', async () => {
@@ -732,6 +839,9 @@ try {
     await msg(ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: false });
     await banner('aioff.test', 'necessary', { want: 'leave' });
     await msg(ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: true });
+    await msg(ACTIONS.SET_AI_ENABLED, { enabled: false });
+    await banner('aimaster.test', 'necessary', { want: 'leave' });
+    await msg(ACTIONS.SET_AI_ENABLED, { enabled: true });
     assert.equal((await modelStats()).consentCalls, 0);
   });
 
@@ -850,12 +960,17 @@ try {
     const st = await msg(ACTIONS.GET_OPTIONS_STATE, {});
     assert.deepEqual(st.state.aiMemory, { decisions: {}, undone: {} });
     assert.equal(st.state.aiSettings.autoOptimise, false);
+    assert.equal(st.state.aiSettings.enabled, false, 'on-device AI is off again');
     assert.equal(st.state.globalCustomConfig.showToastBadge, false);
     const session = await (await getSw()).evaluate(() => chrome.storage.session.get(null));
     assert.deepEqual(session, {});
   });
 
   // ---- describe a change (popup, model double in the page)
+
+  // Describe a change needs on-device AI on; keep loaded stays off so the idle timing below applies.
+  await msg(ACTIONS.SET_AI_PAGE_SETTINGS, { keepLoaded: false });
+  await msg(ACTIONS.SET_AI_ENABLED, { enabled: true });
 
   await check('describe a change: the worker loads the model first and keeps it for a while', async () => {
     await model({});
@@ -915,6 +1030,32 @@ try {
     await poll(async () => !(await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.siteProfiles['describe.test']);
     assert.equal((await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.siteProfiles['describe.test'], undefined);
     await pop.close();
+
+    // Only an unasked protection change: removed without a note, and the popup says nothing was found.
+    const unasked = await context.newPage();
+    await unasked.addInitScript(() => {
+      Object.defineProperty(window, 'LanguageModel', {
+        configurable: true,
+        writable: true,
+        value: {
+          async availability() { return 'available'; },
+          async create() { return { async prompt() { return JSON.stringify({ changes: [{ op: 'site_mode', value: 'off' }], unsupported: [], edits: [] }); }, destroy() {} }; }
+        }
+      });
+    });
+    await unasked.setViewportSize({ width: 340, height: 700 });
+    await unasked.goto(`chrome-extension://${extId}/popup.html?tabId=${tabId}&view=advanced`);
+    await sleep(600);
+    await unasked.click('text=describe a change');
+    await unasked.fill('.describe-input', 'hide the bar asking me to download the app');
+    await unasked.click('text=preview');
+    await unasked.waitForSelector('.describe .note.warn');
+    const said = await unasked.textContent('.describe');
+    assert.match(said, /could not find a change it can make for that\. Nothing was changed/);
+    assert.doesNotMatch(said, /Not supported|did not ask for/);
+    assert.equal(await unasked.locator('.plan').count(), 0, 'no empty preview');
+    assert.equal((await msg(ACTIONS.GET_OPTIONS_STATE, {})).state.siteProfiles['describe.test'], undefined, 'nothing applied');
+    await unasked.close();
 
     const none = await context.newPage();
     await none.addInitScript(() => Object.defineProperty(window, 'LanguageModel', { configurable: true, writable: true, value: undefined }));

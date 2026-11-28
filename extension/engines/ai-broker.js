@@ -48,6 +48,7 @@
     let running = false;
     let coldUntil = 0;
     let keepUntil = 0; // the session is kept at least until then (see warm)
+    let pinned = false; // kept until unpinned (see pin)
     // Chrome unloaded the model about 5 minutes after its last answer even with a session open
     // (measured), so a kept session asks one tiny question this often while it is kept.
     const TOUCH_EVERY = o.touchEvery || 4 * 60000;
@@ -83,19 +84,20 @@
 
     function scheduleRelease() {
       clearTimeout(idleTimer);
-      idleTimer = unref(setTimeout(release, Math.max(IDLE_RELEASE, keepUntil - now())));
+      idleTimer = 0;
+      if (!pinned) idleTimer = unref(setTimeout(release, Math.max(IDLE_RELEASE, keepUntil - now())));
       scheduleTouch();
     }
 
     function scheduleTouch() {
       clearTimeout(touchTimer);
       touchTimer = 0;
-      if (base && keepUntil - now() > TOUCH_EVERY / 2) touchTimer = unref(setTimeout(touch, TOUCH_EVERY));
+      if (base && (pinned || keepUntil - now() > TOUCH_EVERY / 2)) touchTimer = unref(setTimeout(touch, TOUCH_EVERY));
     }
 
     async function touch() {
       touchTimer = 0;
-      if (!base || running || now() >= keepUntil) return;
+      if (!base || running || (!pinned && now() >= keepUntil)) return;
       let c = null;
       try {
         c = typeof base.clone === 'function' ? await base.clone() : null;
@@ -217,8 +219,18 @@
       return { ok: true, ms: now() - t };
     }
 
+    // Keeps the session, and so the model, loaded until unpinned. The user asked for this by turning
+    // on on-device AI with "keep the model loaded"; it costs memory for as long as Chrome runs.
+    function pin(on) {
+      // Called every minute by the keep alarm: rescheduling here would push the touch back for ever.
+      if (pinned === !!on) return;
+      pinned = !!on;
+      if (base) scheduleRelease();
+    }
+
     return {
       availability,
+      pin,
       prompt,
       warm,
       release,
@@ -227,6 +239,7 @@
       get hasSession() { return !!base; },
       get warming() { return now() < coldUntil; },
       get keptUntil() { return keepUntil; },
+      get pinned() { return pinned; },
       get pending() { return queue.length + (running ? 1 : 0); }
     };
   }

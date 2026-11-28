@@ -22,24 +22,57 @@
         <a href="#websites">websites</a>
         <a href="#trackers">trackers</a>
         <a href="#hidden">page changes</a>
+        <a href="#ai">AI</a>
         <a href="#data">data</a>
       </nav>
     </header>
 
     <main class="content" id="content">
       <section id="welcome" class="section welcome" hidden>
-        <h1>rocky's on guard</h1>
-        <p class="lead">Rockyweb is already working on every website. There is nothing you have to set up.</p>
-        <dl class="facts" id="welcomeFacts"></dl>
-        <div class="welcome-ai" id="welcomeAi" hidden>
-          <h2>one optional extra: on-device AI <span class="exp-tag" title="Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.">experimental</span></h2>
-          <p>Chrome can run a small AI model on this computer. With it, Rockyweb can make page changes you describe in the toolbar ("hide the sticky header and make the text bigger"), offer fixes for common page annoyances, and refuse cookie banners its rules don't recognise. It never accepts cookies for you, every change can be undone, and the model runs on your device.</p>
-          <p>It is new and can be slow: the first answer after Chrome starts can take several minutes while Chrome loads the model.</p>
-          <p class="ai-status" id="welcomeAiStatus" role="status" aria-live="polite"></p>
-          <div class="welcome-actions" id="welcomeAiActions"></div>
+        <div id="setupIntro">
+          <p class="step">step 1 of 2</p>
+          <h1 id="introTitle" tabindex="-1">rocky's on guard</h1>
+          <p class="lead">Rockyweb is already protecting you on every website. It:</p>
+          <ul class="intro">
+            <li>answers cookie popups for you</li>
+            <li>blocks known ads and trackers</li>
+            <li>cleans tracking bits out of links you open</li>
+            <li>has a switch for each website on its toolbar icon</li>
+          </ul>
+          <div class="setup-actions"><button class="btn on" id="setupNext" type="button">next</button></div>
+          <p class="welcome-next">Open source: <a href="https://github.com/notfsx/rockyweb" target="_blank" rel="noopener noreferrer">github.com/notfsx/rockyweb</a></p>
         </div>
-        <p class="welcome-next">Change your answer to cookie popups under <a href="#cookies">cookies</a>, or see <a href="#protection">all settings</a>. The toolbar icon has a switch for each website.</p>
-        <p class="welcome-next">Rockyweb is open source: <a href="https://github.com/notfsx/rockyweb" target="_blank" rel="noopener noreferrer">github.com/notfsx/rockyweb</a></p>
+        <div id="setupGeneral" hidden>
+          <p class="step">step 2 of 2</p>
+          <h1 id="generalTitle" tabindex="-1">your general settings</h1>
+          <p class="lead">These apply on every website. They start as Rockyweb works now, so you can just press done.</p>
+          <div class="setting">
+            <div class="setting-text"><h2>default mode</h2><p id="setupTierText"></p></div>
+            <div class="setting-ctl" id="setupTier"></div>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><h2>cookie popups</h2><p id="setupCookieText"></p></div>
+            <div class="setting-ctl setup-cookies" id="setupCookies"></div>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><h2>how hard Rockyweb works</h2><p id="setupOperatingText"></p></div>
+            <div class="setting-ctl" id="setupOperating"></div>
+          </div>
+          <div class="setting" id="setupAi" hidden>
+            <div class="setting-text">
+              <h2>use Chrome's on-device AI <span class="exp-tag" title="Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.">experimental</span></h2>
+              <div id="setupAiDescription"></div>
+              <p class="ai-status" id="setupAiStatus" role="status" aria-live="polite"></p>
+              <div class="ai-setup" id="setupAiConfirm" hidden></div>
+            </div>
+            <div class="setting-ctl" id="setupAiToggle"></div>
+          </div>
+          <p class="welcome-next">To change a single website, use the Rockyweb icon on the toolbar. Everything else is under settings.</p>
+          <div class="setup-actions">
+            <button class="btn" id="setupBack" type="button">back</button>
+            <button class="btn on" id="setupDone" type="button">done</button>
+          </div>
+        </div>
       </section>
 
       <section id="protection" class="section" hidden>
@@ -58,28 +91,58 @@
           <div class="setting-ctl" id="operatingButtons"></div>
         </div>
         <p class="precedence">Your explicit choices always come first, then the mode for each site, then Light, then automatic optimisation. Light never undoes a choice you made.</p>
-        <div class="setting" id="aiSetting">
-          <div class="setting-text">
-            <h2><span id="aiTitle">automatically optimise protection for each site</span> <span class="exp-tag" title="Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.">experimental</span></h2>
-            <div id="aiDescription"></div>
-            <p class="ai-status" id="aiStatus" role="status" aria-live="polite"></p>
-            <div class="ai-setup" id="aiSetup" hidden></div>
-          </div>
-          <div class="setting-ctl" id="aiToggle"></div>
-        </div>
-        <div class="setting">
-          <div class="setting-text">
-            <h2>let AI change pages, not only settings <span class="exp-tag" title="Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.">experimental</span></h2>
-            <div id="pageEditsDescription"></div>
-          </div>
-          <div class="setting-ctl" id="pageEditsToggle"></div>
-        </div>
         <div class="setting">
           <div class="setting-text">
             <h2>page fixes <span class="exp-tag" title="Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.">experimental</span></h2>
             <div id="pageFixesDescription"></div>
           </div>
           <div class="setting-ctl" id="pageFixesButtons"></div>
+        </div>
+      </section>
+
+      <section id="ai" class="section" hidden>
+        <h1>on-device AI <span class="exp-tag" title="Uses Chrome’s on-device AI, which is still new: it can be slow or wrong. Every change previews first and can be undone.">experimental</span></h1>
+        <p class="lead">Off unless you turn it on. Everything else in Rockyweb works without it.</p>
+        <div class="setting">
+          <div class="setting-text">
+            <h2>use Chrome's on-device AI</h2>
+            <div id="aiMasterDescription"></div>
+            <p class="ai-status" id="aiMasterStatus" role="status" aria-live="polite"></p>
+            <div class="ai-setup" id="aiMasterSetup" hidden></div>
+          </div>
+          <div class="setting-ctl" id="aiMasterToggle"></div>
+        </div>
+        <div id="aiFeatures" hidden>
+          <div class="setting">
+            <div class="setting-text">
+              <h2>keep the model loaded</h2>
+              <div id="aiKeepDescription"></div>
+            </div>
+            <div class="setting-ctl" id="aiKeepToggle"></div>
+          </div>
+          <div class="setting">
+            <div class="setting-text">
+              <h2>start Chrome when you sign in to this computer</h2>
+              <div id="aiStartDescription"></div>
+              <div class="ai-setup" id="aiStartActions"></div>
+            </div>
+            <div class="setting-ctl" id="aiStartToggle"></div>
+          </div>
+          <div class="setting" id="aiSetting">
+            <div class="setting-text">
+              <h2><span id="aiTitle">automatically optimise protection for each site</span></h2>
+              <div id="aiDescription"></div>
+              <p class="ai-status" id="aiStatus" role="status" aria-live="polite"></p>
+            </div>
+            <div class="setting-ctl" id="aiToggle"></div>
+          </div>
+          <div class="setting">
+            <div class="setting-text">
+              <h2>let AI change pages, not only settings</h2>
+              <div id="pageEditsDescription"></div>
+            </div>
+            <div class="setting-ctl" id="pageEditsToggle"></div>
+          </div>
         </div>
       </section>
 

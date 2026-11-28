@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { CHROME } from './cdp-pipe.mjs';
+import { CHROME, EXTRA_ARGS } from './cdp-pipe.mjs';
 const [ROOT, PROFILE, OUT] = process.argv.slice(2);
 const EXT_DIR = path.join(ROOT, 'extension');
 const { chromium } = createRequire(path.join(ROOT, 'package.json'))('playwright');
@@ -13,7 +13,7 @@ const server = http.createServer((q, r) => { r.writeHead(200, { 'content-type': 
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const PORT = server.address().port;
 const chrome = spawn(CHROME, [`--user-data-dir=${PROFILE}`, '--remote-debugging-port=9341', '--no-first-run',
-  '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', '--host-resolver-rules=MAP *.test 127.0.0.1'], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
+  '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', '--host-resolver-rules=MAP *.test 127.0.0.1', ...EXTRA_ARGS], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
 let pbuf = ''; let pn = 0; const pw = new Map();
 chrome.stdio[4].on('data', (d) => { pbuf += d; let i; while ((i = pbuf.indexOf('\0')) >= 0) { const m = JSON.parse(pbuf.slice(0, i)); pbuf = pbuf.slice(i + 1); if (pw.has(m.id)) { pw.get(m.id)(m); pw.delete(m.id); } } });
 const cdp = (method, params) => new Promise((r) => { const k = ++pn; pw.set(k, r); chrome.stdio[3].write(`${JSON.stringify({ id: k, method, params })}\0`); });
@@ -35,6 +35,7 @@ try {
   await site.goto(`http://shop.test:${PORT}/`);
   const pop = await ctx.newPage();
   await pop.goto(`chrome-extension://${id}/popup.html`);
+  await pop.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiEnabled', payload: { enabled: true } }));
   const tabId = await pop.evaluate((u) => chrome.tabs.query({}).then((ts) => ts.find((x) => (x.url || '').startsWith(u)).id), `http://shop.test:${PORT}/`);
   // Each case: the request and what the preview must show (lines other than "Everything else stays").
   const offOnly = (re) => (L) => L.length >= 1 && L.every((l) => re.test(l));

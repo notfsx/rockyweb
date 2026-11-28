@@ -224,8 +224,12 @@ test('checkPlan: a request that is not about protection never changes protection
     'hide the free delivery banner', 'stop the header following me', 'hide the chat widget', 'hide everything but the article', 'use light colours', 'dark mode please']) {
     const r = RW.checkPlan(plan, ask, null);
     assert.deepEqual(r.changes, [], ask);
-    assert.ok(r.unsupported.includes('a protection change you did not ask for'), ask);
+    // Removed quietly: no note about something the user never asked for.
+    assert.deepEqual(r.unsupported, [], ask);
   }
+  // A page edit beside the unasked change keeps its own notes and gains none.
+  const withNote = { changes: plan.changes, unsupported: ['moving the logo'] };
+  assert.deepEqual(RW.checkPlan(withNote, 'hide the app bar', null), { changes: [], unsupported: ['moving the logo'] });
   for (const ask of ['show adverts here', 'this site is broken', 'make this site strict', 'turn Rockyweb off on this site', 'turn it off here',
     'I still get cookie banners, reject them all', 'stop cleaning links', 'hide annoyances like chat widgets', 'switch to light mode']) {
     assert.ok(RW.checkPlan(plan, ask, null).changes.length > 0, ask);

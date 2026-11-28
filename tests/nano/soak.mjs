@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { CHROME } from './cdp-pipe.mjs';
+import { CHROME, EXTRA_ARGS } from './cdp-pipe.mjs';
 
 const [ROOT, PROFILE, OUT, COUNT] = process.argv.slice(2);
 const N = Number(COUNT) || 200;
@@ -46,7 +46,7 @@ function memory() {
 }
 
 const chrome = spawn(CHROME, [`--user-data-dir=${PROFILE}`, '--remote-debugging-port=9337', '--no-first-run', '--no-default-browser-check',
-  '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', '--host-resolver-rules=MAP *.test 127.0.0.1'], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
+  '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', '--host-resolver-rules=MAP *.test 127.0.0.1', ...EXTRA_ARGS], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
 let pbuf = ''; let pn = 0; const pw = new Map();
 chrome.stdio[4].on('data', (d) => { pbuf += d; let i; while ((i = pbuf.indexOf('\0')) >= 0) { const m = JSON.parse(pbuf.slice(0, i)); pbuf = pbuf.slice(i + 1); if (pw.has(m.id)) { pw.get(m.id)(m); pw.delete(m.id); } } });
 const cdp = (method, params) => new Promise((r) => { const k = ++pn; pw.set(k, r); chrome.stdio[3].write(`${JSON.stringify({ id: k, method, params })}\0`); });
@@ -67,6 +67,7 @@ try {
   const msg = (a, p) => opt.evaluate(([x, y]) => chrome.runtime.sendMessage({ action: x, payload: y }), [a, p]);
   const A = await opt.evaluate(() => window.RockyShared.ACTIONS);
   await msg(A.SET_OPERATING_MODE, { mode: 'full' });
+  await msg(A.SET_AI_ENABLED, { enabled: true });
   await msg(A.SET_AI_AUTO_OPTIMISE, { enabled: true });
   await opt.evaluate(() => chrome.storage.local.set({ aiMemory: {} }));
   const t = Date.now();

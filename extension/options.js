@@ -7,7 +7,7 @@
   const { h, send, seg, onOff, toggle, fmt, timeAgo, errorText, keepFocus, infoText, hintUses, countHintUse, hintFor } = RW.UI;
   const $ = (id) => document.getElementById(id);
 
-  const PAGES = ['welcome', 'protection', 'cookies', 'custom', 'websites', 'trackers', 'hidden', 'data'];
+  const PAGES = ['welcome', 'protection', 'cookies', 'custom', 'websites', 'trackers', 'hidden', 'ai', 'data'];
   const MODE_LABEL = { off: 'off', consent_only: 'consent', balanced: 'balanced', strict: 'strict', custom: 'custom' };
   const HEURISTIC_TEXT = { off: 'ignored', cookie_strip: 'cookies stripped', hard_block: 'blocked' };
   const CONSENT_TEXT = { off: 'left alone', custom_categories: 'your choices', strict_reject: 'reject all' };
@@ -70,9 +70,13 @@
 
   // ---------------------------------------------------------------- routing
 
+  let shown = '';
   function showPage() {
     const id = PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'protection';
+    if (id === 'welcome' && shown !== 'welcome') Object.assign(wiz, { step: 1, tier: null, cats: null, mode: null });
+    shown = id;
     for (const p of PAGES) $(p).hidden = p !== id;
+    $('nav').hidden = id === 'welcome';
     for (const a of document.querySelectorAll('#nav a')) {
       if (a.getAttribute('href') === `#${id}`) a.setAttribute('aria-current', 'page');
       else a.removeAttribute('aria-current');
@@ -127,15 +131,18 @@
   }
 
   const OPERATING_TEXT = {
-    full: ['Everything Rockyweb offers.', 'Includes tracker learning and deep page scanning, and automatic optimisation if you turn it on. Light mode uses less of your computer.'],
-    light: ['Uses less of your computer.', 'Blocking, link cleaning and your site settings stay. Tracker learning, AI and deep page scanning pause. Cookie popups are answered only for the consent platforms Rockyweb recognises.']
+    full: ['Everything Rockyweb offers.', 'Includes tracker learning, deep page scanning, page fixes, and on-device AI if you turn it on. Light mode uses less of your computer.'],
+    light: ['Uses less of your computer.', 'Turns off on-device AI (describe a change, automatic optimisation and keeping the model loaded), page fixes, tracker learning and deep page scanning. Cookie popups are answered only for the consent platforms Rockyweb recognises. Blocking, link cleaning and your site settings stay.']
   };
 
-  // ---- automatic optimisation (Chrome's on-device AI)
-  // Opening this page only calls availability(). A model download starts only from the user's click.
+  // ---- on-device AI (#ai). Off by default and turned on deliberately: while on, Chrome's model is kept
+  // loaded, which is heavy. Opening this page only calls availability(); a model download starts only
+  // from the user's click.
 
   const SETUP_KEY = 'aiSetupInProgress';
-  const ai = { availability: null, setup: 'idle', progress: 0, error: '', ctrl: null, otherSetup: false, pollTimer: 0 };
+  const ai = { availability: null, setup: 'idle', understood: false, progress: 0, error: '', ctrl: null, otherSetup: false, pollTimer: 0, startup: false };
+  const pct = () => (ai.progress ? ` (${Math.round(ai.progress * 100)}%)` : '');
+  const unusable = (a) => a === 'absent' || a === 'unavailable' || a === 'error';
 
   async function checkAi() {
     if (typeof self.LanguageModel === 'undefined' || typeof LanguageModel.availability !== 'function') {
@@ -145,113 +152,210 @@
     }
     const flag = await chrome.storage.session.get(SETUP_KEY).catch(() => ({}));
     ai.otherSetup = !!flag[SETUP_KEY] && ai.setup !== 'downloading';
+    ai.startup = await chrome.permissions.contains({ permissions: ['background'] }).catch(() => false);
     clearTimeout(ai.pollTimer);
     if ((ai.availability === 'downloading' || ai.otherSetup) && document.visibilityState === 'visible') ai.pollTimer = setTimeout(checkAi, 4000);
     renderAi();
   }
 
-  function aiState() {
-    const pref = !!S.aiSettings.autoOptimise;
+  function masterState() {
+    const on = !!S.aiSettings.enabled;
     const a = ai.availability;
-    if (S.operatingMode === 'light') {
-      return { disabled: true, text: pref ? 'AI is paused in Light mode. Your choice is kept and resumes in Full mode.' : 'AI is paused in Light mode.' };
-    }
-    if (a === null) return { disabled: true, text: 'Checking whether on-device AI is available…' };
-    if (a === 'absent' || a === 'unavailable' || a === 'error') return { disabled: true, warn: true, text: 'On-device AI is unavailable in this browser or on this device.' };
-    if (ai.setup === 'downloading') {
-      return { disabled: true, text: `Chrome is downloading the on-device model${ai.progress ? ` (${Math.round(ai.progress * 100)}%)` : ''}. You can keep browsing.` };
-    }
-    if (a === 'downloading' || ai.otherSetup) return { disabled: true, text: 'Chrome is downloading the on-device model. This page updates when it is ready.' };
-    if (a === 'downloadable') {
-      return { disabled: false, text: pref ? 'On, but Chrome still needs to download its on-device model.' : 'Chrome needs to download its on-device model once when you turn this on.' };
-    }
-    return { disabled: false, text: pref ? 'On. Adjustments happen quietly; undo them from the toolbar.' : 'Off.' };
+    if (a === null) return { disabled: true, text: 'Checking whether this computer can run Chrome’s on-device model…' };
+    if (unusable(a)) return { disabled: !on, warn: true, text: 'Chrome’s on-device model is unavailable in this browser or on this computer.' };
+    if (ai.setup === 'downloading') return { disabled: true, text: `Chrome is downloading the model${pct()}. You can keep browsing.` };
+    if (a === 'downloading' || ai.otherSetup) return { disabled: true, text: 'Chrome is downloading the model. This page updates when it is ready.' };
+    if (S.operatingMode === 'light') return { disabled: true, text: 'Paused in Light mode.' };
+    if (!on) return { disabled: false, text: 'Off.' };
+    if (a === 'downloadable') return { disabled: false, text: 'On, but Chrome still needs to download its model.' };
+    return { disabled: false, text: S.aiSettings.keepLoaded !== false ? 'On. The model is kept loaded while Chrome runs.' : 'On. The model loads when you first use it.' };
   }
+
+  // The master switch shows on the AI page and at the bottom of first-run setup. Both run the same
+  // confirm step; only the one on screen (active) shows it.
+  const MASTER_AI = { desc: 'aiMasterDescription', toggle: 'aiMasterToggle', status: 'aiMasterStatus', setup: 'aiMasterSetup', label: 'Use Chrome’s on-device AI' };
+  const SETUP_AI = { desc: 'setupAiDescription', toggle: 'setupAiToggle', status: 'setupAiStatus', setup: 'setupAiConfirm', label: 'Turn on Chrome’s on-device AI' };
 
   function renderAi() {
     if (!S) return;
-    $('aiDescription').replaceChildren(infoText(
-      'Small adjustments with Chrome’s on-device AI: hiding an unsolicited newsletter overlay on an article, and refusing a cookie banner Rockyweb does not recognise.',
-      'An overlay you can undo from the toolbar. A cookie banner is answered only when your cookie choices refuse something, by clicking its refuse button; for that, the banner’s heading and button labels go to the on-device model, which runs on this computer. Buttons that accept are removed before the model sees anything. A banner answer is listed in the toolbar; it cannot be unclicked, but the site’s own cookie settings link reopens its choices. The first answer after Chrome starts can take several minutes while Chrome loads its model; until then nothing is changed.',
-      'automatic optimisation'));
-    const st = aiState();
-    const pref = !!S.aiSettings.autoOptimise;
-    const sw = toggle(pref, (v) => onAiToggle(v), 'Automatically optimise protection for each site', st.disabled);
-    sw.setAttribute('aria-describedby', 'aiStatus');
-    $('aiToggle').replaceChildren(sw);
-    const status = $('aiStatus');
-    status.textContent = ai.error || st.text;
-    status.classList.toggle('warn', !!(ai.error || st.warn));
-
-    const setup = $('aiSetup');
-    setup.replaceChildren();
-    const needsDownload = ai.availability === 'downloadable' && S.operatingMode !== 'light';
-    if (ai.setup === 'confirm' || (pref && needsDownload && ai.setup === 'idle')) {
-      setup.append(
-        h('p', { text: 'Chrome will download Gemini Nano, its on-device model. It is a large download (usually a few gigabytes) managed and stored by Chrome. Rockyweb sends nothing to any server.' }),
-        h('button', { class: 'btn on', type: 'button', onclick: startDownload, text: 'download and turn on' }),
-        h('button', { class: 'btn', type: 'button', text: 'cancel', onclick: () => { ai.setup = 'idle'; if (pref) act(A.SET_AI_AUTO_OPTIMISE, { enabled: false }); else renderAi(); } }));
-    } else if (ai.setup === 'downloading') {
-      const bar = h('span', { style: { width: `${Math.round(ai.progress * 100)}%` } });
-      setup.append(
-        h('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Model download', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(ai.progress * 100)) }, bar),
-        h('button', { class: 'btn', type: 'button', text: 'cancel download', onclick: () => ai.ctrl && ai.ctrl.abort() }));
-    }
-    setup.hidden = !setup.childNodes.length;
+    const on = !!S.aiSettings.enabled;
+    renderMaster(MASTER_AI, !setupShown());
+    $('aiFeatures').hidden = !on;
+    if (on) renderAiFeatures();
     renderWelcome();
   }
 
-  // ---- first run (#welcome, opened once after install): what already works, and the optional AI
-  const welcome = { notNow: false };
+  function renderMaster(ids, active) {
+    const on = !!S.aiSettings.enabled;
+    $(ids.desc).replaceChildren(infoText(
+      'Lets you describe page changes in the toolbar, and lets Rockyweb adjust sites by itself if you want, using Gemini Nano, the model Chrome runs on this computer.',
+      'It is experimental and heavy. Answers take seconds and can be wrong, so every change previews first and can be undone. While it is on, Rockyweb keeps the model loaded so answers come quickly; that keeps several gigabytes of memory (or graphics memory) busy and uses more battery. It suits a desktop, or a laptop on mains power, not a low-powered computer. Chrome’s stated minimum is a graphics card with more than 4 GB of memory, or 16 GB of memory and 4 processor cores, and 22 GB of free disk space for the download. Nothing is sent to any server.',
+      'on-device AI'));
+    const st = masterState();
+    const sw = toggle(on || (active && ai.setup === 'confirm'), onMasterToggle, ids.label, st.disabled);
+    sw.setAttribute('aria-describedby', ids.status);
+    $(ids.toggle).replaceChildren(sw);
+    const status = $(ids.status);
+    status.textContent = ai.error || st.text;
+    status.classList.toggle('warn', !!(ai.error || st.warn));
 
-  function renderWelcome() {
-    if (!S || $('welcome').hidden) return;
-    const cfg = RW.getEffectiveConfig(S, null);
-    const fact = (label, value) => h('div', {}, h('dt', { text: label }), h('dd', { text: value }));
-    $('welcomeFacts').replaceChildren(
-      fact('cookie popups', CONSENT_TEXT[cfg.consentMode]),
-      fact('known ads & trackers', cfg.adBlockNetwork ? 'blocked' : 'allowed'),
-      fact('tracking links', cfg.stripUrlParams ? 'cleaned' : 'untouched'));
-    const a = ai.availability;
-    const card = $('welcomeAi');
-    // Only offered when this device can run the model.
-    card.hidden = a === 'absent' || a === 'unavailable' || a === 'error';
-    if (card.hidden) return;
-    const pref = !!S.aiSettings.autoOptimise;
-    const status = $('welcomeAiStatus');
-    const actions = $('welcomeAiActions');
-    const btn = (text, onclick, primary) => h('button', { class: `btn${primary ? ' on' : ''}`, type: 'button', onclick, text });
-    const notNow = btn('not now', () => { welcome.notNow = true; renderWelcome(); });
-    let text = '';
-    let row = [];
-    if (a === null) text = 'Checking whether this computer can run it…';
-    else if (S.operatingMode === 'light') text = 'AI is paused in Light mode. Switch to Full under all settings to use it.';
-    else if (ai.setup === 'downloading') {
-      text = `Chrome is downloading the model${ai.progress ? ` (${Math.round(ai.progress * 100)}%)` : ''}. You can close this page and keep browsing.`;
-      row = [h('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Model download', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(ai.progress * 100)) },
-        h('span', { style: { width: `${Math.round(ai.progress * 100)}%` } })), btn('cancel download', () => ai.ctrl && ai.ctrl.abort())];
-    } else if (a === 'downloading' || ai.otherSetup) text = 'Chrome is downloading the model. This page updates when it is ready.';
-    else if (pref && a === 'available') text = 'On. Open the toolbar icon on any website and choose "describe a change".';
-    else if (welcome.notNow) text = 'No problem. You can turn it on any time under all settings.';
-    else if (a === 'downloadable') {
-      text = 'Chrome downloads the model once. It is large (usually a few gigabytes), and Chrome manages and stores it, not Rockyweb.';
-      row = [btn('download and turn on', startDownload, true), notNow];
-    } else if (a === 'available') {
-      text = 'The model is already on this computer.';
-      row = [btn('turn on', () => act(A.SET_AI_AUTO_OPTIMISE, { enabled: true }, 'Automatic optimisation is on'), true), notNow];
+    const setup = $(ids.setup);
+    setup.replaceChildren();
+    if (!active) {
+      setup.hidden = true;
+      return;
     }
-    status.textContent = ai.error || text;
-    status.classList.toggle('warn', !!ai.error);
-    actions.replaceChildren(...row);
-    actions.hidden = !row.length;
+    if (ai.setup === 'confirm') {
+      const needsDownload = ai.availability === 'downloadable';
+      const go = h('button', { class: 'btn on', type: 'button', disabled: !ai.understood, text: needsDownload ? 'download and turn on' : 'turn on', onclick: confirmTurnOn });
+      const box = h('input', { type: 'checkbox', checked: ai.understood, onchange: (e) => { ai.understood = e.target.checked; go.disabled = !ai.understood; } });
+      setup.append(
+        h('p', { text: 'While it is on, Rockyweb loads the model when Chrome starts and keeps it loaded until Chrome quits, so it is ready when you ask. That is what makes it quick, and what makes it heavy.' }),
+        ...(needsDownload ? [h('p', { text: 'Chrome first downloads the model once. It is large (usually a few gigabytes), and Chrome manages and stores it, not Rockyweb.' })] : []),
+        h('label', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, box, 'I understand it keeps a lot of memory busy and uses more battery'),
+        go,
+        h('button', { class: 'btn', type: 'button', text: 'cancel', onclick: () => { ai.setup = 'idle'; ai.understood = false; renderAi(); } }));
+    } else if (ai.setup === 'downloading') {
+      setup.append(
+        h('div', { class: 'progress', role: 'progressbar', 'aria-label': 'Model download', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(ai.progress * 100)) },
+          h('span', { style: { width: `${Math.round(ai.progress * 100)}%` } })),
+        h('button', { class: 'btn', type: 'button', text: 'cancel download', onclick: () => ai.ctrl && ai.ctrl.abort() }));
+    }
+    setup.hidden = !setup.childNodes.length;
   }
 
-  function onAiToggle(enabled) {
+  function renderAiFeatures() {
+    const st = S.aiSettings;
+    const light = S.operatingMode === 'light';
+    $('aiKeepDescription').replaceChildren(infoText(
+      'Loads the model when Chrome starts and keeps it ready, so answers take seconds rather than minutes.',
+      'Chrome unloads its model a few minutes after it was last used, and loading it again took minutes on our test laptop (measured). With this on, Rockyweb keeps a session open and asks the model a one-word question every few minutes, so Chrome keeps it. Off: the model loads when you first ask, and is let go 10 minutes after.',
+      'keeping the model loaded'));
+    $('aiKeepToggle').replaceChildren(toggle(st.keepLoaded !== false,
+      (v) => act(A.SET_AI_PAGE_SETTINGS, { keepLoaded: v }, v ? 'The model is kept loaded' : 'The model loads when needed'), 'Keep the model loaded', light));
+
+    $('aiStartDescription').replaceChildren(infoText(
+      'Recommended with on-device AI: Chrome starts in the background when you sign in, so the model is ready before you open a window.',
+      'Chrome then also keeps running after its last window closes, until you quit it from its icon (on Windows, in the notification area). It needs Chrome’s “Continue running background apps when Google Chrome is closed” setting to be on. If Chrome still does not start at sign-in on your computer, add it to your computer’s startup apps instead. Turning off on-device AI turns this off too.',
+      'starting with your computer'));
+    $('aiStartToggle').replaceChildren(toggle(ai.startup, onStartupToggle, 'Start Chrome when you sign in to this computer', light));
+    $('aiStartActions').replaceChildren(h('button', { class: 'btn', type: 'button', text: 'open Chrome’s background setting', onclick: () => chrome.tabs.create({ url: 'chrome://settings/system' }) }));
+
+    $('aiDescription').replaceChildren(infoText(
+      'Small adjustments by the model: hiding an unsolicited newsletter overlay on an article, and refusing a cookie banner Rockyweb does not recognise.',
+      'An overlay you can undo from the toolbar. A cookie banner is answered only when your cookie choices refuse something, by clicking its refuse button; for that, the banner’s heading and button labels go to the on-device model, which runs on this computer. Buttons that accept are removed before the model sees anything. A banner answer is listed in the toolbar; it cannot be unclicked, but the site’s own cookie settings link reopens its choices. While the model is still loading, nothing is changed.',
+      'automatic optimisation'));
+    const pref = !!st.autoOptimise;
+    const sw = toggle(pref, (v) => act(A.SET_AI_AUTO_OPTIMISE, { enabled: v }, v ? 'Automatic optimisation is on' : 'Automatic optimisation is off'),
+      'Automatically optimise protection for each site', light);
+    sw.setAttribute('aria-describedby', 'aiStatus');
+    $('aiToggle').replaceChildren(sw);
+    $('aiStatus').textContent = light ? '' : pref ? 'On. Adjustments happen quietly; undo them from the toolbar.' : 'Off.';
+  }
+
+  function onMasterToggle(v) {
     ai.error = '';
-    if (!enabled) { ai.setup = 'idle'; act(A.SET_AI_AUTO_OPTIMISE, { enabled: false }, 'Automatic optimisation is off'); return; }
-    if (ai.availability === 'available') { act(A.SET_AI_AUTO_OPTIMISE, { enabled: true }, 'Automatic optimisation is on'); return; }
-    if (ai.availability === 'downloadable') { ai.setup = 'confirm'; renderAi(); return; }
+    if (v) { ai.setup = 'confirm'; renderAi(); return; }
+    ai.setup = 'idle';
+    ai.understood = false;
+    if (!S.aiSettings.enabled) { renderAi(); return; }
+    act(A.SET_AI_ENABLED, { enabled: false }, 'On-device AI is off').then(checkAi);
+  }
+
+  function confirmTurnOn() {
+    if (!ai.understood) return;
+    ai.setup = 'idle';
+    ai.understood = false;
+    if (ai.availability === 'downloadable') { startDownload(); return; }
+    act(A.SET_AI_ENABLED, { enabled: true }, 'On-device AI is on');
+  }
+
+  // permissions.request needs the click, so it is the first thing awaited.
+  async function onStartupToggle(v) {
+    try {
+      if (v) await chrome.permissions.request({ permissions: ['background'] });
+      else await chrome.permissions.remove({ permissions: ['background'] });
+    } catch (_) {
+      toast('Chrome did not allow that.', true);
+    }
+    ai.startup = await chrome.permissions.contains({ permissions: ['background'] }).catch(() => false);
     renderAi();
+  }
+
+  // ---- first-run setup (#welcome, opened once after install). Protection already runs with the
+  // defaults; step 2 starts from the saved settings and writes only what changed, on done. Leaving
+  // early changes nothing. AI shows only where the model can run, off, behind the same confirm.
+
+  const wiz = { step: 1, tier: null, cats: null, mode: null };
+  const CATS = [['functional', 'functional'], ['analytics', 'analytics'], ['marketing', 'marketing']];
+  const setupShown = () => !$('welcome').hidden && wiz.step === 2;
+
+  function renderWelcome() {
+    $('setupIntro').hidden = wiz.step !== 1;
+    $('setupGeneral').hidden = wiz.step !== 2;
+    if (!S || !setupShown()) return;
+    if (wiz.tier === null) {
+      wiz.tier = S.globalDefaultTier;
+      wiz.cats = Object.assign({}, S.globalCustomConfig.consentCategories);
+      wiz.mode = S.operatingMode;
+    }
+    const redraw = () => keepFocus(renderWelcome);
+    const tiers = ['consent_only', 'balanced', 'strict'];
+    if (!tiers.includes(wiz.tier)) tiers.push(wiz.tier);
+    $('setupTier').replaceChildren(seg(
+      tiers.map((t) => ({ value: t, label: MODE_LABEL[t], title: RW.TIER_META[t].name })),
+      wiz.tier, (t) => { wiz.tier = t; redraw(); }, 'Default mode for every website', false, 'btns'));
+    $('setupTierText').textContent = RW.TIER_META[wiz.tier].description;
+
+    const consent = (wiz.tier === 'custom' ? S.globalCustomConfig : RW.TIER_PRESETS[wiz.tier]).consentMode;
+    const fixed = consent !== 'custom_categories';
+    $('setupCookieText').textContent = consent === 'strict_reject' ? 'This mode rejects everything optional.'
+      : consent === 'off' ? 'This mode leaves cookie popups alone.'
+        : 'What Rockyweb says yes to. Cookies a site needs to work are always allowed.';
+    $('setupCookies').replaceChildren(...CATS.map(([key, label]) => h('div', { class: 'setup-cat' },
+      h('span', { text: label }),
+      onOff(wiz.cats[key], (v) => { wiz.cats[key] = v; redraw(); }, `Answer for ${label} cookies`, fixed))));
+
+    $('setupOperating').replaceChildren(seg(
+      ['full', 'light'].map((m) => ({ value: m, label: m, title: RW.OPERATING_META[m].description })),
+      wiz.mode, (m) => { wiz.mode = m; redraw(); }, 'How hard Rockyweb works on every website', false, 'btns'));
+    $('setupOperatingText').textContent = OPERATING_TEXT[wiz.mode][0];
+
+    const a = ai.availability;
+    $('setupAi').hidden = a === null || unusable(a);
+    if (!$('setupAi').hidden) renderMaster(SETUP_AI, true);
+  }
+
+  function setupStep(n) {
+    wiz.step = n;
+    if (n === 1) { ai.setup = ai.setup === 'confirm' ? 'idle' : ai.setup; ai.understood = false; }
+    window.scrollTo(0, 0);
+    renderAi();
+    renderWelcome();
+    $(n === 1 ? 'introTitle' : 'generalTitle').focus();
+  }
+
+  // Writes only the choices that differ from what is saved, so done with nothing changed sends nothing.
+  async function finishSetup() {
+    if (!S || wiz.tier === null) { location.hash = 'protection'; return; }
+    const steps = [];
+    if (wiz.tier !== S.globalDefaultTier) steps.push([A.SET_GLOBAL_TIER, { tier: wiz.tier }]);
+    const cats = S.globalCustomConfig.consentCategories;
+    if (CATS.some(([k]) => !!cats[k] !== !!wiz.cats[k])) {
+      steps.push([A.SET_GLOBAL_CUSTOM_OPTION, { key: 'consentCategories', value: Object.assign({}, cats, wiz.cats) }]);
+    }
+    if (wiz.mode !== S.operatingMode) steps.push([A.SET_OPERATING_MODE, { mode: wiz.mode }]);
+    try {
+      for (const [action, payload] of steps) await send(action, payload);
+    } catch (err) {
+      toast(errorText(err), true);
+      await load();
+      return;
+    }
+    if (ai.setup === 'confirm') { ai.setup = 'idle'; ai.understood = false; }
+    location.hash = 'protection';
+    toast('All set. Change a single website from the toolbar icon.');
+    await load();
   }
 
   // Runs from the user's click, which Chrome requires before it downloads the model.
@@ -278,14 +382,14 @@
     }
     chrome.storage.session.set({ [SETUP_KEY]: Date.now() }).catch(() => {});
     renderAi();
-    send(A.SET_AI_AUTO_OPTIMISE, { enabled: true }).catch(() => {});
+    send(A.SET_AI_ENABLED, { enabled: true }).catch(() => {});
     try {
       const session = await created;
       session.destroy(); // only needed the download; inference runs in the background
-      toast('On-device AI is ready. Automatic optimisation is on.');
+      toast('On-device AI is ready and on.');
     } catch (_) {
-      ai.error = ctrl.signal.aborted ? 'Download cancelled. Automatic optimisation stays off.' : 'Chrome could not set up the on-device model. Please try again later.';
-      await send(A.SET_AI_AUTO_OPTIMISE, { enabled: false }).catch(() => {});
+      ai.error = ctrl.signal.aborted ? 'Download cancelled. On-device AI stays off.' : 'Chrome could not set up the on-device model. Please try again later.';
+      await send(A.SET_AI_ENABLED, { enabled: false }).catch(() => {});
     } finally {
       ai.setup = 'idle';
       ai.ctrl = null;
@@ -442,17 +546,18 @@
 
   function renderPageAi() {
     const st = S.aiSettings || {};
+    const light = S.operatingMode === 'light';
     $('pageEditsDescription').replaceChildren(infoText(
       '"Describe a change" in the toolbar can also hide, unstick, resize and recolour parts of a page.',
       'Only from a list of safe changes; the AI never writes code or CSS. You see the change on the page before you apply it. Every change is saved for that website, so you never have to ask twice, and listed in the toolbar and under page changes, where you can switch it off or delete it. Off: describe a change only changes settings.',
       'letting AI change pages'));
     $('pageEditsToggle').replaceChildren(toggle(st.pageEdits !== false,
       (v) => act(A.SET_AI_PAGE_SETTINGS, { pageEdits: v }, v ? 'Described changes can edit pages' : 'Described changes only change settings'),
-      'Let AI change pages, not only settings'));
+      'Let AI change pages, not only settings', light));
     const mode = st.pageFixes || 'suggest';
     $('pageFixesButtons').replaceChildren(seg(
       [{ value: 'off', label: 'off' }, { value: 'suggest', label: 'suggest' }, { value: 'auto', label: 'automatic' }],
-      mode, (v) => act(A.SET_AI_PAGE_SETTINGS, { pageFixes: v }, `page fixes: ${v === 'auto' ? 'automatic' : v}`), 'Page fixes', false, 'btns'));
+      mode, (v) => act(A.SET_AI_PAGE_SETTINGS, { pageFixes: v }, `page fixes: ${v === 'auto' ? 'automatic' : v}`), 'Page fixes', light, 'btns'));
     $('pageFixesDescription').replaceChildren(infoText(FIX_MODE_TEXT[mode][0], FIX_MODE_TEXT[mode][1], 'page fixes'));
   }
 
@@ -572,6 +677,9 @@
 
   window.addEventListener('hashchange', showPage);
   showPage();
+  $('setupNext').addEventListener('click', () => setupStep(2));
+  $('setupBack').addEventListener('click', () => setupStep(1));
+  $('setupDone').addEventListener('click', finishSetup);
 
   $('addSiteTier').append(...RW.TIER_ORDER.map((t) => h('option', { value: t, selected: t === 'consent_only', text: MODE_LABEL[t] })));
   $('siteSearch').addEventListener('input', (e) => { ui.siteQuery = e.target.value; renderWebsites(); });

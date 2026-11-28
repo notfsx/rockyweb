@@ -97,11 +97,13 @@ body { min-height: 100vh; }
 
 /* first run */
 .welcome h1 { color: var(--text); font-size: var(--fs-4xl); letter-spacing: -0.03em; }
-.welcome-ai { margin-top: 22px; padding: 18px 20px; border-radius: var(--radius); border: 1px solid var(--line); }
-.welcome-ai h2 { margin: 0 0 6px; font-size: var(--fs-l); font-weight: 500; }
-.welcome-ai p { margin: 0 0 10px; max-width: 640px; font-size: var(--fs-m); line-height: 1.55; color: var(--sub-dim); }
-.welcome-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.welcome-actions .progress { flex: 1 1 200px; }
+.welcome h1:focus { outline: none; }
+.welcome .step { margin: 0 0 6px; font-size: var(--fs-s); color: var(--sub-dim); }
+.intro { margin: 0 0 26px; padding: 0 0 0 20px; color: var(--text); font-size: var(--fs-l); line-height: 1.9; }
+.intro li::marker { color: var(--main); }
+.setup-actions { display: flex; gap: 8px; margin-top: 22px; }
+.setup-cookies { flex-direction: column; align-items: flex-end; gap: 6px; }
+.setup-cat { display: flex; align-items: center; justify-content: flex-end; gap: 12px; font-size: var(--fs-m); color: var(--sub); }
 .welcome-next { margin: 22px 0 0; font-size: var(--fs-m); color: var(--sub-dim); }
 .welcome-next a { color: var(--sub); }
 .welcome-next a:hover { color: var(--main); }

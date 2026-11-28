@@ -27,6 +27,7 @@ try {
   const STATS = 'Object.assign({}, broker.stats, { hasSession: broker.hasSession, pending: broker.pending })';
   const setup = await c.inWorker(id, `(async () => {
     const fresh = (await (await fetch('engines/ai-broker.js')).text()).includes(self.RockyShared.createAiBroker.toString());
+    await HANDLERS[A.SET_AI_ENABLED].fn({ enabled: true });
     await HANDLERS[A.SET_AI_AUTO_OPTIMISE].fn({ enabled: true });
     await HANDLERS[A.CLEAR_AI_MEMORY].fn({});
     return { fresh, autoOptimise: state.aiSettings.autoOptimise };

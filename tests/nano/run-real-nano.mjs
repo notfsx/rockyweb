@@ -5,6 +5,8 @@
 // no Playwright browser download is required because your own Chrome is used.
 // NANO_PROFILE=<dir> puts the profile (and the model) elsewhere, e.g. outside a synced folder.
 // NANO_DOWNLOAD=yes starts the model download without asking.
+// NANO_KEEP=0 turns "keep the model loaded" off, to check the idle release instead of the keep.
+// NANO_CHROME_ARGS adds Chrome switches, e.g. "--headless=new" to run without a window.
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -20,6 +22,8 @@ const ROOT = path.resolve(EXT_DIR, '..');
 const PROFILE = process.env.NANO_PROFILE || path.join(ROOT, '.nano-profile');
 const REPORT = path.join(ROOT, 'tests', 'nano', 'nano-report.json');
 const DEBUG_PORT = Number(process.env.NANO_DEBUG_PORT || 9333);
+const KEEP = process.env.NANO_KEEP !== '0';
+const EXTRA_ARGS = (process.env.NANO_CHROME_ARGS || '').split(' ').filter(Boolean);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ask = async (q) => {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -69,7 +73,7 @@ fs.mkdirSync(PROFILE, { recursive: true });
 const chrome = spawn(chromePath, [
   `--user-data-dir=${PROFILE}`, `--remote-debugging-port=${DEBUG_PORT}`, '--no-first-run', '--no-default-browser-check',
   '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', `--load-extension=${EXT_DIR}`,
-  '--host-resolver-rules=MAP *.test 127.0.0.1'
+  '--host-resolver-rules=MAP *.test 127.0.0.1', ...EXTRA_ARGS
 ], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'], detached: false });
 
 let pipeBuf = '';
@@ -162,10 +166,11 @@ try {
       if (!/^y/i.test(ok)) { report.result = 'download_declined'; save(); process.exit(0); }
       // The click on the settings page is the user gesture Chrome requires for the download.
       const opt = await context.newPage();
-      await opt.goto(`chrome-extension://${extId}/options.html#protection`);
+      await opt.goto(`chrome-extension://${extId}/options.html#ai`);
       await sleep(800);
-      await opt.click('#aiToggle .switch');
-      await opt.click('text=download and turn on');
+      await opt.click('#aiMasterToggle .switch');
+      await opt.check('#aiMasterSetup input[type=checkbox]');
+      await opt.click('#aiMasterSetup >> text=download and turn on');
       step('download started from the settings page');
     }
     const started = Date.now();
@@ -177,9 +182,13 @@ try {
     step('model ready', { seconds: Math.round((Date.now() - started) / 1000) });
   }
 
-  // Turn automatic optimisation on, forget earlier decisions, then close every Rockyweb page.
+  // Turn on-device AI and automatic optimisation on, forget earlier decisions, then close every Rockyweb page.
   const opt = context.pages().find((p) => p.url().startsWith(`chrome-extension://${extId}/`)) || await context.newPage();
   if (!opt.url().startsWith(`chrome-extension://${extId}/`)) await opt.goto(`chrome-extension://${extId}/options.html`);
+  // Keep loaded is set before AI is turned on, so a run without it never starts the keep.
+  await opt.evaluate((k) => chrome.runtime.sendMessage({ action: 'setAiPageSettings', payload: { keepLoaded: k } }), KEEP);
+  await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiEnabled', payload: { enabled: true } }));
+  report.keepLoaded = KEEP;
   await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiAutoOptimise', payload: { enabled: true } }));
   await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'clearAiMemory', payload: {} }));
   for (const p of context.pages()) if (p.url().startsWith('chrome-extension://')) await p.close();
@@ -217,8 +226,16 @@ try {
   const backoff = await article('cold2.test', 30000);
   step('cold model: next article during the backoff', backoff);
 
-  // 2. Measured warm-up, done by this harness (not by Rockyweb) so the next checks see a ready model.
-  const warm = await sw.evaluate(async () => {
+  // 2. Warm-up. With keep loaded, Rockyweb loads the model by itself: wait for that. Without it, the
+  //    harness loads it (not Rockyweb) so the next checks see a ready model.
+  const warm = KEEP ? await sw.evaluate(async () => {
+    for (let i = 0; i < 300; i++) {
+      const n = (await chrome.storage.session.get('aiModelLoad')).aiModelLoad || {};
+      if (n.warm) return { byRockyweb: n.warm, secondsFromEnable: Math.round((n.warmAt - n.loadingSince) / 100) / 10 };
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    return { byRockyweb: 'not ready after 25 minutes' };
+  }) : await sw.evaluate(async () => {
     const t = performance.now();
     const s = await LanguageModel.create(Object.assign({}, self.RockyShared.AI_MODEL_OPTIONS));
     const createMs = performance.now() - t;
@@ -226,7 +243,7 @@ try {
     s.destroy();
     return { createSeconds: Math.round(createMs / 100) / 10, firstInferenceSeconds: Math.round((performance.now() - t - createMs) / 100) / 10 };
   });
-  step('model warm-up by the test harness', warm);
+  step(KEEP ? 'model loaded by Rockyweb (keep loaded)' : 'model warm-up by the test harness', warm);
 
   // 3. Warm: hidden with exactly one real model call.
   const warmArticle = await article('news.test', 60000);
@@ -241,16 +258,17 @@ try {
   await web.goto('about:blank');
   await sleep(65000);
   const released = !(await stats()).hasSession;
-  step('idle session released', { hasSession: !released });
+  step(KEEP ? 'idle session kept (keep loaded)' : 'idle session released', { hasSession: !released });
 
-  // 4. After release: is the model still warm in Chrome, or cold again?
+  // 4. After the idle minute: kept and quick, or released and is the model still warm in Chrome?
   const afterRelease = await article('later.test', 30000);
-  step('article after the session was released', afterRelease);
+  step(KEEP ? 'article after a minute idle, session kept' : 'article after the session was released', afterRelease);
 
   const coldOk = cold.state !== 'absent' && cold.pending === 0 && (cold.state === 'hidden' || cold.timeouts >= 1);
   const warmOk = warmArticle.state === 'hidden' && warmArticle.modelCalls === 1;
   const backoffOk = cold.state === 'hidden' || (backoff.state === 'shown' && backoff.warming === 1 && backoff.modelCalls === 0 && backoff.seconds < 10);
-  report.result = coldOk && backoffOk && warmOk && plainCalls === 0 && released ? 'pass' : 'check_report';
+  const idleOk = KEEP ? !released && afterRelease.state === 'hidden' && afterRelease.seconds < 10 : released;
+  report.result = coldOk && backoffOk && warmOk && plainCalls === 0 && idleOk ? 'pass' : 'check_report';
   console.log(`
 result: ${report.result}`);
   save();

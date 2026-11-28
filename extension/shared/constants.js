@@ -48,6 +48,7 @@
     SET_AI_AUTO_OPTIMISE: 'setAiAutoOptimise',
     GET_AI_STATUS: 'getAiStatus',
     AI_WARM: 'aiWarm',
+    SET_AI_ENABLED: 'setAiEnabled',
     SET_SITE_NEWSLETTER: 'setSiteNewsletter',
     AI_UNDO_ADJUSTMENT: 'aiUndoAdjustment',
     AI_SITE_OPT_OUT: 'aiSiteOptOut',
@@ -180,8 +181,8 @@
   RW.AI_CONSENT_ENABLED = true;
 
   RW.OPERATING_META = Object.freeze({
-    full: { label: 'Full', description: 'Everything Rockyweb offers, including tracker learning and automatic optimisation if you turn it on.' },
-    light: { label: 'Light', description: 'Uses less of your computer. Blocking, link cleaning and your site settings stay; tracker learning, AI and deep page scanning pause. Cookie popups are answered only for the consent platforms Rockyweb recognises.' }
+    full: { label: 'Full', description: 'Everything Rockyweb offers, including tracker learning, page fixes, and on-device AI if you turn it on.' },
+    light: { label: 'Light', description: 'Uses less of your computer. Turns off on-device AI, page fixes, tracker learning and deep page scanning. Blocking, link cleaning and your site settings stay. Cookie popups are answered only for the consent platforms Rockyweb recognises.' }
   });
 
   if (typeof module === 'object' && module.exports) module.exports = RW;

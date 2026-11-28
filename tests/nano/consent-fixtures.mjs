@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { CHROME } from './cdp-pipe.mjs';
+import { CHROME, EXTRA_ARGS } from './cdp-pipe.mjs';
 
 const [ROOT, PROFILE, OUT] = process.argv.slice(2);
 const EXT_DIR = path.join(ROOT, 'extension');
@@ -67,7 +67,7 @@ const PORT = server.address().port;
 
 const chrome = spawn(CHROME, [
   `--user-data-dir=${PROFILE}`, `--remote-debugging-port=${DEBUG_PORT}`, '--no-first-run', '--no-default-browser-check',
-  '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', '--host-resolver-rules=MAP *.test 127.0.0.1'
+  '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', '--host-resolver-rules=MAP *.test 127.0.0.1', ...EXTRA_ARGS
 ], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
 let pbuf = ''; let pn = 0; const pw = new Map();
 chrome.stdio[4].on('data', (d) => { pbuf += d; let i; while ((i = pbuf.indexOf('\0')) >= 0) { const m = JSON.parse(pbuf.slice(0, i)); pbuf = pbuf.slice(i + 1); if (pw.has(m.id)) { pw.get(m.id)(m); pw.delete(m.id); } } });
@@ -113,6 +113,7 @@ try {
   });
   const opt = await context.newPage();
   await opt.goto(`chrome-extension://${extId}/options.html`);
+  await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiEnabled', payload: { enabled: true } }));
   await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiAutoOptimise', payload: { enabled: true } }));
   await opt.evaluate(() => chrome.storage.local.set({ aiMemory: {} }));
   for (const p of context.pages()) if (p.url().startsWith('chrome-extension://')) await p.close();

@@ -9,7 +9,7 @@ import { createRequire } from 'node:module';
 const [ROOT, PROFILE, OUT] = process.argv.slice(2);
 const EXT_DIR = path.join(ROOT, 'extension');
 const { chromium } = createRequire(path.join(ROOT, 'package.json'))('playwright');
-import { CHROME } from './cdp-pipe.mjs';
+import { CHROME, EXTRA_ARGS } from './cdp-pipe.mjs';
 const DEBUG_PORT = 9334;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const out = { startedAt: new Date().toISOString(), cases: [], perf: {}, notes: [] };
@@ -51,7 +51,7 @@ const at = (host, p) => `http://${host}:${PORT}${p}`;
 // ---- Chrome
 const chrome = spawn(CHROME, [
   `--user-data-dir=${PROFILE}`, `--remote-debugging-port=${DEBUG_PORT}`, '--no-first-run', '--no-default-browser-check',
-  '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', '--host-resolver-rules=MAP *.test 127.0.0.1'
+  '--remote-debugging-pipe', '--enable-unsafe-extension-debugging', '--host-resolver-rules=MAP *.test 127.0.0.1', ...EXTRA_ARGS
 ], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
 let pbuf = ''; let pn = 0; const pw = new Map();
 chrome.stdio[4].on('data', (d) => { pbuf += d; let i; while ((i = pbuf.indexOf('\0')) >= 0) { const m = JSON.parse(pbuf.slice(0, i)); pbuf = pbuf.slice(i + 1); if (pw.has(m.id)) { pw.get(m.id)(m); pw.delete(m.id); } } });
@@ -118,6 +118,7 @@ try {
   // Turn AI on through the real message handler, then close every Rockyweb page.
   const opt = await context.newPage();
   await opt.goto(`chrome-extension://${extId}/options.html`);
+  await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiEnabled', payload: { enabled: true } }));
   await opt.evaluate(() => chrome.runtime.sendMessage({ action: 'setAiAutoOptimise', payload: { enabled: true } }));
   // Fresh memory for the lab sites, so every case is decided now.
   await opt.evaluate(() => chrome.storage.local.set({ aiMemory: {} }));

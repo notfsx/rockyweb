@@ -237,10 +237,8 @@
     const kept = keptKeys(spans);
     // "Dark mode" and the like are page looks, not Rockyweb modes.
     const aboutProtection = PROTECTION_WORDS.test(String(request || '').replace(/\b(dark|night|reading|reader)\s+mode\b/gi, ''));
-    if (!aboutProtection && changes.some((c) => c.op === 'site_mode' || c.op === 'setting')) {
-      changes = changes.filter((c) => c.op !== 'site_mode' && c.op !== 'setting');
-      notes.push('a protection change you did not ask for');
-    }
+    // Removed without a note: the user never asked for it, so there is nothing to tell them.
+    if (!aboutProtection) changes = changes.filter((c) => c.op !== 'site_mode' && c.op !== 'setting');
     // "Off ... except / but keep X": the narrowest mode that still does X, or no mode change.
     const narrowing = changes.find((c) => c.op === 'site_mode' && (c.value === 'off' || c.value === 'consent_only'));
     if (spans.length && narrowing) {
@@ -337,7 +335,7 @@
   const COMMERCE_WORDS = /(subscri|abonn|\babo\b|\bpur\b|pay|purchase|buy|price|premium|€|£|\$|kaufen|suscri|abbona|assin|prenumer|tilaa|předplat|előfizet|sign in|sign up|log ?in|register|account|anmeld|connexion|connecter|iniciar sesión|accedi|inloggen|zaloguj|logga in|registr)/i;
   // Postponing, asking for information, help or a language switch: not an answer at all. Real Nano took
   // "Remind me later" and "Tell me more" for refusals, so these never reach it.
-  const NON_ANSWER = /(later|remind|skip|not now|maybe|go back|^back$|next time|another time|tomorrow|not sure|undecided|tell me|read|find out|show me|more about|what |why|how |help|explain|policy|notice|statement|language|sprache|langue|idioma|lingua|taal|język|språk|sprog|kieli|jazyk|nyelv|später|plus tard|más tarde|più tardi|mais tarde|później|senare|senere|myöhemmin|později|később|mehr|savoir|plus d'|más info|ulteriori|meer|lees|leia|więcej|läs|læs|lue|více|több)/i;
+  const NON_ANSWER = /(later|remind|skip|not now|maybe|go back|^back$|next time|another time|tomorrow|not sure|undecided|decid|tell me|read|find out|show me|more about|what |why|how |help|explain|policy|notice|statement|language|sprache|langue|idioma|lingua|taal|język|språk|sprog|kieli|jazyk|nyelv|später|plus tard|más tarde|più tardi|mais tarde|później|senare|senere|myöhemmin|později|később|mehr|savoir|plus d'|más info|ulteriori|meer|lees|leia|więcej|läs|læs|lue|více|több)/i;
   // Attribute names and values on the element that betray an accept button behind refusal-like text.
   const ACCEPT_ATTR = /(accept|agree|allow[-_ ]?all|allowall|opt[-_ ]?in|consent[-_ ]?all|consentall|acceptall)/i;
 

@@ -43,7 +43,9 @@ const NEVER = [
   // Postponing, information and language: real Nano took the first two for refusals (2026-11-15).
   'Remind me later', 'Tell me more', 'Skip for now', 'Not now', 'Go back', 'Maybe later', 'Ask me next time', 'Read our cookie policy', 'Why do we use cookies?', 'Help',
   'Change language', 'Später', 'Mehr erfahren', 'Plus tard', 'En savoir plus', 'Más tarde', 'Più tardi', 'Later', 'Lees meer',
-  'Mais tarde', 'Później', 'Senare', 'Läs mer', 'Senere', 'Myöhemmin', 'Lue lisää', 'Později', 'Később'
+  'Mais tarde', 'Później', 'Senare', 'Läs mer', 'Senere', 'Myöhemmin', 'Lue lisää', 'Později', 'Később',
+  // Chrome 158's model called this a refusal with high confidence and it was clicked (2026-11-26).
+  'I am not decided yet', 'Let me decide later'
 ];
 
 // Refusals the wording rules may miss, which the model may be offered.

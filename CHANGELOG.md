@@ -1,6 +1,20 @@
 # Changelog
 
-## 1.1.0 (not yet published)
+## 1.1.1
+
+### Changed
+
+- **On-device AI is a deliberate opt-in.** One switch under settings, AI, off by default. Turning it on explains the memory and battery cost and needs a confirm; the model downloads only from that click. While it is on, Rockyweb keeps the model loaded so answers come in seconds, and can optionally start Chrome when you sign in.
+- **First-run setup** replaces the welcome page: a short intro, then the general settings for every website (default mode, cookie popup answer, how hard Rockyweb works), already at the defaults. On a computer that can run Chrome's model, the AI switch sits at the bottom, off. Protection runs before setup is finished, and nothing is saved until done.
+- Light mode greys out the AI switches and page fixes in settings, and its info text says what it turns off.
+- The popup's error state shows Rocky with his dropped tennis ball.
+
+### Fixed
+
+- "Describe a change" no longer shows "Not supported: a protection change you did not ask for" next to a good page change. The unasked change is still removed.
+- When "describe a change" finds nothing it can do, it says so plainly instead of "That does not seem to ask for any change".
+
+## 1.1.0
 
 ### New
 
