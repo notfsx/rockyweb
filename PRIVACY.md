@@ -1,6 +1,6 @@
 # Rockyweb privacy policy
 
-Effective 20 November 2026.
+Effective 28 November 2026.
 
 Rockyweb is a browser extension that answers cookie popups, blocks ads and trackers, and hides page elements you choose. It is built so that nothing about you or your browsing leaves your device. The one exception is optional and off by default: if you turn on Chrome sync in Rockyweb, your settings and page changes are copied to your other computers through your own Google account (see below).
 
@@ -39,7 +39,7 @@ The copy is limited to about 96 KB, below Chrome's limit. If your data is larger
 
 ## On-device AI (optional, off by default)
 
-If you turn on automatic optimisation, Rockyweb uses Chrome's built-in model (Gemini Nano), which runs entirely on your device. Chrome downloads and stores the model; Rockyweb starts that download only after you choose to. It is asked about the following only:
+If you turn on on-device AI (settings, AI), Rockyweb uses Chrome's built-in model (Gemini Nano), which runs entirely on your device. While it is on, Rockyweb keeps the model loaded in Chrome, which uses memory and battery on your computer but sends nothing anywhere. Chrome downloads and stores the model; Rockyweb starts that download only after you choose to. It is asked about the following only:
 
 - **An overlay on an article.** It receives a few facts about that one overlay (page type, position, number of fields, whether you interacted with it, and a short heading from the page).
 - **A cookie banner no built-in rule recognised.** It receives the banner's heading, the page language, how many buttons it has, and the labels of the buttons that might refuse cookies. Buttons that accept, open settings, save, subscribe, pay, sign in or leave the page are removed before the model sees anything, so it can never pick one. It answers with one of those buttons or "leave it".
@@ -66,7 +66,9 @@ It never receives what you typed into the page, form values, passwords, cookies,
 | `declarativeNetRequest` | Blocking ad and tracker requests, removing tracking cookies and tracking parameters, with rules evaluated by Chrome itself. |
 | `webRequest` (observe only) | Noticing which third-party domains set or send tracking cookies, so trackers can be learned locally. Requests are never modified or delayed through this permission. |
 | `scripting` | Applying your cookie choices through a consent platform's own controls, and injecting element hiding and page change styles. |
-| (no permission) Chrome's built-in AI | Optional automatic optimisation and "describe a change". The `LanguageModel` API needs no extension permission. |
+| (no permission) Chrome's built-in AI | Optional on-device AI: automatic optimisation and "describe a change". The `LanguageModel` API needs no extension permission. |
+| `alarms` | Only with on-device AI on and "keep the model loaded": a one-minute alarm that reloads the model if Chrome stopped it. |
+| `background` (optional, only if you turn on "start Chrome when you sign in") | Lets Chrome start when you sign in to your computer, so the model is ready. Removed when you turn on-device AI off. |
 | `storage` | Saving your settings and the data listed above on your device, and, only if you turn sync on, a copy of your settings in Chrome sync. |
 
 ## Changes
