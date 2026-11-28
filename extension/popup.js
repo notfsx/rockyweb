@@ -144,10 +144,10 @@
     main.append(renderFoot());
   }
 
-  // The popup could not load at all: Rocky, his ball rolled away.
+  // The popup could not load at all: Rocky, ball dropped at his feet.
   function renderDropped() {
     return h('div', { class: 'dropped', role: 'alert' },
-      h('div', { class: 'pup' }, h('img', { src: 'icons/rocky.png', alt: '', width: 64, height: 64 }), icon('ball', 'ball')),
+      h('img', { class: 'pup', src: 'icons/rocky-dropped.png', alt: '', width: 55, height: 120 }),
       h('div', { class: 'host', text: 'Rocky dropped the ball' }),
       h('p', { text: 'Rockyweb could not load for this tab. Close this popup and open it again.' }),
       errorMsg ? h('p', { class: 'dim', text: errorMsg }) : null);
