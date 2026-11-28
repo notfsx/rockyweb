@@ -83,7 +83,7 @@ A global operating choice, separate from the per-site modes. Precedence (in `run
 
 - **Kept:** declarative blocking, link cleaning, element hiding, your site settings, and explicit newsletter choices.
 - **Paused:**
-  - AI;
+  - on-device AI (describe a change, automatic optimisation, keeping the model loaded) and page fixes; their switches are greyed out in settings;
   - tracker learning and request header observation (only top-level navigations are observed);
   - the third-party domain list;
   - deep page scanning and retries.

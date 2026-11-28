@@ -51,7 +51,7 @@ PAGE FIXES, SUGGESTED OR AUTOMATIC (EXPERIMENTAL)
 Rockyweb spots common annoyances (an "open in app" bar, a video that follows you down the page, a page that will not scroll, an oversized sticky header) and suggests a one-click fix. Switch to automatic and the sure ones are fixed as the page loads. Every fix can be undone, and a fix you dismiss is never suggested again.
 
 LIGHT MODE
-Uses less of your computer. Blocking, link cleaning and your site settings stay; tracker learning, AI and deep page scanning pause.
+Uses less of your computer. Turns off on-device AI, page fixes, tracker learning and deep page scanning. Blocking, link cleaning and your site settings stay.
 
 HIDE ANYTHING WITH A CLICK
 Point at a banner, click, done. Rockyweb remembers it for that site. Undo is one key away.

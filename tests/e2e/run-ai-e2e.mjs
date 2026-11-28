@@ -497,7 +497,7 @@ try {
     await p.close();
   });
 
-  await check('settings: automatic optimisation needs AI on; Light mode pauses it and keeps the choice', async () => {
+  await check('settings: automatic optimisation needs AI on; Light mode greys out every AI control and keeps the choices', async () => {
     await msg(ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: true });
     assert.equal(await (await getSw()).evaluate(() => RW.getEffectiveConfig(state, null).aiPreference), false, 'no automatic optimisation while AI is off');
     await msg(ACTIONS.SET_AI_AUTO_OPTIMISE, { enabled: false });
@@ -509,12 +509,21 @@ try {
     await msg(ACTIONS.SET_OPERATING_MODE, { mode: 'light' });
     await p.reload();
     await sleep(700);
+    const controls = () => p.evaluate(() => ({
+      switches: ['aiMasterToggle', 'aiKeepToggle', 'aiStartToggle', 'aiToggle', 'pageEditsToggle'].map((id) => document.querySelector(`#${id} .switch`).disabled),
+      fixes: document.querySelector('#pageFixesButtons [role=radiogroup]').getAttribute('aria-disabled') === 'true'
+    }));
     const ui = await aiUi(p);
     assert.equal(ui.checked, true, 'saved choice still shown');
-    assert.match(ui.status, /paused in Light mode/);
+    assert.equal(ui.status, 'Paused in Light mode.');
     assert.equal(await p.locator('#aiToggle .switch').getAttribute('aria-checked'), 'true');
-    assert.equal(await p.locator('#aiStatus').textContent(), 'Paused in Light mode.');
+    assert.deepEqual(await controls(), { switches: [true, true, true, true, true], fixes: true }, 'every AI control and page fixes greyed out');
+    await p.click('#aiToggle .switch', { force: true });
+    await sleep(300);
+    assert.equal((await aiState()).autoOptimise, true, 'a greyed switch changes nothing');
     await msg(ACTIONS.SET_OPERATING_MODE, { mode: 'full' });
+    await poll(async () => !(await controls()).switches.some(Boolean));
+    assert.deepEqual(await controls(), { switches: [false, false, false, false, false], fixes: false }, 'back in Full mode');
     assert.equal((await aiState()).autoOptimise, true);
     await p.close();
   });

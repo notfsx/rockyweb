@@ -131,8 +131,8 @@
   }
 
   const OPERATING_TEXT = {
-    full: ['Everything Rockyweb offers.', 'Includes tracker learning and deep page scanning, and automatic optimisation if you turn it on. Light mode uses less of your computer.'],
-    light: ['Uses less of your computer.', 'Blocking, link cleaning and your site settings stay. Tracker learning, AI and deep page scanning pause. Cookie popups are answered only for the consent platforms Rockyweb recognises.']
+    full: ['Everything Rockyweb offers.', 'Includes tracker learning, deep page scanning, page fixes, and on-device AI if you turn it on. Light mode uses less of your computer.'],
+    light: ['Uses less of your computer.', 'Turns off on-device AI (describe a change, automatic optimisation and keeping the model loaded), page fixes, tracker learning and deep page scanning. Cookie popups are answered only for the consent platforms Rockyweb recognises. Blocking, link cleaning and your site settings stay.']
   };
 
   // ---- on-device AI (#ai). Off by default and turned on deliberately: while on, Chrome's model is kept
@@ -165,7 +165,7 @@
     if (unusable(a)) return { disabled: !on, warn: true, text: 'Chrome’s on-device model is unavailable in this browser or on this computer.' };
     if (ai.setup === 'downloading') return { disabled: true, text: `Chrome is downloading the model${pct()}. You can keep browsing.` };
     if (a === 'downloading' || ai.otherSetup) return { disabled: true, text: 'Chrome is downloading the model. This page updates when it is ready.' };
-    if (S.operatingMode === 'light') return { disabled: false, text: on ? 'On, but paused in Light mode. It resumes in Full mode.' : 'Off. Light mode would pause it anyway.' };
+    if (S.operatingMode === 'light') return { disabled: true, text: 'Paused in Light mode.' };
     if (!on) return { disabled: false, text: 'Off.' };
     if (a === 'downloadable') return { disabled: false, text: 'On, but Chrome still needs to download its model.' };
     return { disabled: false, text: S.aiSettings.keepLoaded !== false ? 'On. The model is kept loaded while Chrome runs.' : 'On. The model loads when you first use it.' };
@@ -226,18 +226,19 @@
 
   function renderAiFeatures() {
     const st = S.aiSettings;
+    const light = S.operatingMode === 'light';
     $('aiKeepDescription').replaceChildren(infoText(
       'Loads the model when Chrome starts and keeps it ready, so answers take seconds rather than minutes.',
       'Chrome unloads its model a few minutes after it was last used, and loading it again took minutes on our test laptop (measured). With this on, Rockyweb keeps a session open and asks the model a one-word question every few minutes, so Chrome keeps it. Off: the model loads when you first ask, and is let go 10 minutes after.',
       'keeping the model loaded'));
     $('aiKeepToggle').replaceChildren(toggle(st.keepLoaded !== false,
-      (v) => act(A.SET_AI_PAGE_SETTINGS, { keepLoaded: v }, v ? 'The model is kept loaded' : 'The model loads when needed'), 'Keep the model loaded'));
+      (v) => act(A.SET_AI_PAGE_SETTINGS, { keepLoaded: v }, v ? 'The model is kept loaded' : 'The model loads when needed'), 'Keep the model loaded', light));
 
     $('aiStartDescription').replaceChildren(infoText(
       'Recommended with on-device AI: Chrome starts in the background when you sign in, so the model is ready before you open a window.',
       'Chrome then also keeps running after its last window closes, until you quit it from its icon (on Windows, in the notification area). It needs Chrome’s “Continue running background apps when Google Chrome is closed” setting to be on. If Chrome still does not start at sign-in on your computer, add it to your computer’s startup apps instead. Turning off on-device AI turns this off too.',
       'starting with your computer'));
-    $('aiStartToggle').replaceChildren(toggle(ai.startup, onStartupToggle, 'Start Chrome when you sign in to this computer'));
+    $('aiStartToggle').replaceChildren(toggle(ai.startup, onStartupToggle, 'Start Chrome when you sign in to this computer', light));
     $('aiStartActions').replaceChildren(h('button', { class: 'btn', type: 'button', text: 'open Chrome’s background setting', onclick: () => chrome.tabs.create({ url: 'chrome://settings/system' }) }));
 
     $('aiDescription').replaceChildren(infoText(
@@ -246,10 +247,10 @@
       'automatic optimisation'));
     const pref = !!st.autoOptimise;
     const sw = toggle(pref, (v) => act(A.SET_AI_AUTO_OPTIMISE, { enabled: v }, v ? 'Automatic optimisation is on' : 'Automatic optimisation is off'),
-      'Automatically optimise protection for each site');
+      'Automatically optimise protection for each site', light);
     sw.setAttribute('aria-describedby', 'aiStatus');
     $('aiToggle').replaceChildren(sw);
-    $('aiStatus').textContent = S.operatingMode === 'light' ? 'Paused in Light mode.' : pref ? 'On. Adjustments happen quietly; undo them from the toolbar.' : 'Off.';
+    $('aiStatus').textContent = light ? '' : pref ? 'On. Adjustments happen quietly; undo them from the toolbar.' : 'Off.';
   }
 
   function onMasterToggle(v) {
@@ -545,17 +546,18 @@
 
   function renderPageAi() {
     const st = S.aiSettings || {};
+    const light = S.operatingMode === 'light';
     $('pageEditsDescription').replaceChildren(infoText(
       '"Describe a change" in the toolbar can also hide, unstick, resize and recolour parts of a page.',
       'Only from a list of safe changes; the AI never writes code or CSS. You see the change on the page before you apply it. Every change is saved for that website, so you never have to ask twice, and listed in the toolbar and under page changes, where you can switch it off or delete it. Off: describe a change only changes settings.',
       'letting AI change pages'));
     $('pageEditsToggle').replaceChildren(toggle(st.pageEdits !== false,
       (v) => act(A.SET_AI_PAGE_SETTINGS, { pageEdits: v }, v ? 'Described changes can edit pages' : 'Described changes only change settings'),
-      'Let AI change pages, not only settings'));
+      'Let AI change pages, not only settings', light));
     const mode = st.pageFixes || 'suggest';
     $('pageFixesButtons').replaceChildren(seg(
       [{ value: 'off', label: 'off' }, { value: 'suggest', label: 'suggest' }, { value: 'auto', label: 'automatic' }],
-      mode, (v) => act(A.SET_AI_PAGE_SETTINGS, { pageFixes: v }, `page fixes: ${v === 'auto' ? 'automatic' : v}`), 'Page fixes', false, 'btns'));
+      mode, (v) => act(A.SET_AI_PAGE_SETTINGS, { pageFixes: v }, `page fixes: ${v === 'auto' ? 'automatic' : v}`), 'Page fixes', light, 'btns'));
     $('pageFixesDescription').replaceChildren(infoText(FIX_MODE_TEXT[mode][0], FIX_MODE_TEXT[mode][1], 'page fixes'));
   }
 
