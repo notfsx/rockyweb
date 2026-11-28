@@ -25,7 +25,7 @@
     "test:sites": "node tests/sites/run-sites.mjs && node tests/sites/report.mjs"
   },
   "devDependencies": {
-    "axe-core": "^4.10.3",
+    "axe-core": "^4.14.1",
     "playwright": "^1.65.1"
   }
 }
